@@ -1,0 +1,12 @@
+[package]
+name = "datanium-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "datanium"
+path = "src/main.rs"
+
+[dependencies]
