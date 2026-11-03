@@ -13,4 +13,4 @@ members = [
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
-repository = "https://github.com/bennetfreigang/Datanium"
+repository = "https://github.com/platyn-labs/Datanium"
