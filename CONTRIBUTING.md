@@ -150,3 +150,62 @@ Use `gh run view RUN_ID` to inspect the run for your latest commit, replacing
   released format. Use isolated temporary directories in tests.
 - Keep the backend replaceable. Exercise the same contract against each backend.
   Measure optimizations with reproducible benchmarks and retain correctness tests.
+
+### Register a backend for the shared storage tests
+
+The shared cases and registration macros live in
+`crates/datanium-storage/tests/contract/mod.rs`. Register each backend in its own
+module in `crates/datanium-storage/tests/storage_contract.rs`, or declare a
+submodule there. The existing in-memory registration shows the required setup.
+
+```rust
+mod in_memory {
+    use datanium_storage::in_memory::InMemoryStorage;
+
+    fn with_storage(run: impl FnOnce(&mut InMemoryStorage)) {
+        let mut storage = InMemoryStorage::new();
+        run(&mut storage);
+    }
+
+    crate::contract::storage_contract_tests!(with_storage);
+}
+```
+
+Use the new backend's type and constructor in its registration. The setup
+function must call `run` exactly once with a fresh, empty backend for each test.
+For a file-backed backend, create an isolated temporary directory per invocation
+and keep it alive until `run` returns. Tests may run concurrently.
+
+For a backend with controllable write failures, also provide a failure setup
+function. It calls the test with a fresh backend and a function that arms the
+next mutation failure. That failure must be triggered by the following `put` or
+`delete`, after the test has populated the initial state. The existing
+`tests/fault_injection/mod.rs` provides a complete example with this signature.
+
+```rust
+fn with_failure(run: impl FnOnce(&mut FallibleStorage, fn(&mut FallibleStorage))) {
+    with_storage(|storage| run(storage, FallibleStorage::arm_failure));
+}
+
+crate::contract::storage_contract_tests!(with_storage, failures = with_failure);
+```
+
+The failure cases check that failed inserts, overwrites and deletions preserve
+the previous state. Use a failure hook in each fallible backend to exercise its
+own error handling. `InMemoryStorage` uses `Infallible` and registers the normal
+cases only.
+
+Add new shared cases as functions over the `Storage` trait in `contract/mod.rs`
+and add their names to the corresponding list in `storage_contract_tests!`.
+Each registered backend then receives a separate Rust test for each case. Keep
+backend-specific checks, such as restart durability, with that backend's tests.
+
+Run the suite or a single case from the workspace root.
+
+```sh
+cargo test --locked -p datanium-storage --test storage_contract
+cargo test --locked -p datanium-storage --test storage_contract -- in_memory::reads_last_write --exact
+```
+
+The existing `Rust Checks` CI job includes this suite through
+`cargo test --workspace --locked`.
