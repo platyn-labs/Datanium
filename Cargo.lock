@@ -3,6 +3,10 @@
 version = 4
 
 [[package]]
+name = "datanium-cli"
+version = "0.1.0"
+
+[[package]]
 name = "datanium-client"
 version = "0.1.0"
 
