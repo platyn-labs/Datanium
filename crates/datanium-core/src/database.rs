@@ -1,6 +1,9 @@
 use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct DatabaseId(u64);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 struct TableId(u64);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -9,8 +12,15 @@ struct ColumnId(u64);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 struct RowId(u64);
 
+struct Database {
+    id: DatabaseId,
+    name: String,
+    tables: BTreeMap<TableId, Table>,
+}
+
 struct Table {
     id: TableId,
+    name: String,
     columns: BTreeMap<ColumnId, Column>,
     rows: BTreeMap<RowId, Row>,
     constraints: Vec<Constraint>,
