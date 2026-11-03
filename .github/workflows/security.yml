@@ -1,6 +1,12 @@
 name: Security Audit
 
 on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
   schedule:
     - cron: "0 6 * * 1"
   workflow_dispatch:
@@ -10,14 +16,18 @@ permissions:
 
 jobs:
   audit:
+    name: Dependency Checks
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Install cargo-audit
-        run: cargo install cargo-audit --locked
+      - name: Install security tools
+        run: cargo install --locked cargo-audit cargo-deny
 
       - name: Audit dependencies
         run: cargo audit
+
+      - name: Check dependency licenses and sources
+        run: cargo deny check licenses sources
