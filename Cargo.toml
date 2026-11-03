@@ -1,0 +1,16 @@
+[workspace]
+resolver = "3"
+
+members = [
+    "crates/datanium-core",
+    "crates/datanium-storage",
+    "crates/datanium-query",
+    "crates/datanium-server",
+    "crates/datanium-client",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/bennetfreigang/Datanium"

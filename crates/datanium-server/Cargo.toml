@@ -1,0 +1,9 @@
+[package]
+name = "datanium-server"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+datanium-core = { path = "../datanium-core" }
+datanium-storage = { path = "../datanium-storage" }
+datanium-query = { path = "../datanium-query" }

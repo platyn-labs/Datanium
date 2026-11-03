@@ -1,0 +1,32 @@
+# Rust
+/target/
+
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Local database files
+/data/
+*.db
+*.db-wal
+*.db-shm
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.bak
+
+# Node.js (future Studio)
+/node_modules/
+/apps/datanium-studio/node_modules/
+/apps/datanium-studio/dist/
