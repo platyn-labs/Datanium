@@ -38,3 +38,6 @@ Run the server:
 ## Status
 
 Early development. Not ready for production use.
+
+See [Contributing to Datanium](CONTRIBUTING.md) for the PR workflow, local
+checks and data integrity rules.
