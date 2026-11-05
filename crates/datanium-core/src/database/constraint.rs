@@ -1,5 +1,10 @@
-use super::table::{ColumnId, TableId};
+use super::column::ColumnId;
+use super::table::TableId;
 
+#[expect(
+    dead_code,
+    reason = "Reserved for upcoming row and constraint operations"
+)]
 pub(super) enum Constraint {
     NotNull {
         column: ColumnId,
@@ -18,11 +23,19 @@ pub(super) enum Constraint {
     },
 }
 
+#[expect(
+    dead_code,
+    reason = "Reserved for upcoming row and constraint operations"
+)]
 pub(super) struct ForeignKeyColumn {
     source: ColumnId,
     target: ColumnId,
 }
 
+#[expect(
+    dead_code,
+    reason = "Reserved for upcoming row and constraint operations"
+)]
 pub(super) enum ReferentialAction {
     Restrict,
     Cascade,

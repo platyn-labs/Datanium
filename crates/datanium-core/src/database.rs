@@ -1,10 +1,11 @@
 //! In-memory relational database model.
 //!
-//! Database and table names contain 1 to 64 ASCII characters and match
+//! Database, table and column names contain 1 to 64 ASCII characters and match
 //! `[A-Za-z_][A-Za-z0-9_]*`. Names are preserved as supplied. Table lookup and
 //! uniqueness checks are case-sensitive, so `Customers` and `customers` are
 //! distinct names.
 
+mod column;
 mod constraint;
 mod table;
 #[cfg(test)]
@@ -14,7 +15,11 @@ mod value;
 use std::collections::BTreeMap;
 use std::fmt;
 
-pub use self::table::{Table, TableId};
+use crate::helper;
+
+pub use self::column::{Column, ColumnId};
+pub use self::table::{Table, TableError, TableId};
+pub use self::value::DataType;
 
 /// An error returned when creating a database or accessing its tables.
 #[derive(Debug, PartialEq, Eq)]
@@ -81,7 +86,7 @@ impl Database {
     ///
     /// Returns [`DatabaseError::InvalidDatabaseName`] for an invalid name.
     pub fn new(name: &str) -> Result<Self, DatabaseError> {
-        if !Database::is_valid_name(name) {
+        if !helper::is_valid_name(name) {
             return Err(DatabaseError::InvalidDatabaseName);
         }
 
@@ -114,7 +119,7 @@ impl Database {
             return Err(DatabaseError::TableAlreadyExists);
         }
 
-        if !Database::is_valid_name(name) {
+        if !helper::is_valid_name(name) {
             return Err(DatabaseError::InvalidTableName);
         }
 
@@ -154,6 +159,20 @@ impl Database {
         self.tables.get(id).ok_or(DatabaseError::TableNotFound)
     }
 
+    /// Mutably borrows a table by its exact, case-sensitive name.
+    /// Returns `TableNotFound` when no table matches.
+    pub fn get_table_mut_by_name(&mut self, name: &str) -> Result<&mut Table, DatabaseError> {
+        self.tables
+            .values_mut()
+            .find(|table| table.name() == name)
+            .ok_or(DatabaseError::TableNotFound)
+    }
+
+    /// Mutably borrows a table by ID, or returns `TableNotFound`.
+    pub fn get_table_mut(&mut self, id: &TableId) -> Result<&mut Table, DatabaseError> {
+        self.tables.get_mut(id).ok_or(DatabaseError::TableNotFound)
+    }
+
     /// Renames a table while preserving its ID and contents.
     ///
     /// The new name must contain 1 to 64 ASCII characters and match
@@ -174,7 +193,7 @@ impl Database {
             return Err(DatabaseError::TableNotFound);
         }
 
-        if !Database::is_valid_name(new_name) {
+        if !helper::is_valid_name(new_name) {
             return Err(DatabaseError::InvalidTableName);
         }
 
@@ -224,17 +243,5 @@ impl Database {
 
     fn table_name_exists(&self, name: &str) -> bool {
         self.tables.values().any(|table| table.name() == name)
-    }
-
-    fn is_valid_name(name: &str) -> bool {
-        let mut bytes = name.bytes();
-
-        let valid_start = bytes
-            .next()
-            .is_some_and(|byte| byte.is_ascii_alphabetic() || byte == b'_');
-
-        let valid_rest = bytes.all(|byte| byte.is_ascii_alphanumeric() || byte == b'_');
-
-        name.len() <= 64 && valid_start && valid_rest
     }
 }
