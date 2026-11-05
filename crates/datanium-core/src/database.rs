@@ -1,3 +1,10 @@
+//! In-memory relational database model.
+//!
+//! Database and table names contain 1 to 64 ASCII characters and match
+//! `[A-Za-z_][A-Za-z0-9_]*`. Names are preserved as supplied. Table lookup and
+//! uniqueness checks are case-sensitive, so `Customers` and `customers` are
+//! distinct names.
+
 mod constraint;
 mod table;
 #[cfg(test)]
@@ -5,18 +12,59 @@ mod tests;
 mod value;
 
 use std::collections::BTreeMap;
+use std::fmt;
 
 pub use self::table::{Table, TableId};
 
+/// An error returned when creating a database or accessing its tables.
 #[derive(Debug, PartialEq, Eq)]
 pub enum DatabaseError {
+    /// The table ID counter cannot be advanced.
     TableIdExhausted,
+    /// Another table in this database already has the requested name.
     TableAlreadyExists,
+    /// The database name does not follow the documented name format.
     InvalidDatabaseName,
+    /// The table name does not follow the documented name format.
     InvalidTableName,
+    /// No table matches the requested ID or exact name.
     TableNotFound,
 }
 
+impl fmt::Display for DatabaseError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let message = match self {
+            Self::TableIdExhausted => "table ID counter is exhausted",
+            Self::TableAlreadyExists => "a table with this name already exists",
+            Self::InvalidDatabaseName => "invalid database name",
+            Self::InvalidTableName => "invalid table name",
+            Self::TableNotFound => "table not found",
+        };
+
+        formatter.write_str(message)
+    }
+}
+
+impl std::error::Error for DatabaseError {}
+
+/// An in-memory database that owns its tables and allocates their IDs.
+///
+/// Names follow the format documented in this module. Table names are unique
+/// within each database using case-sensitive comparison.
+///
+/// # Example
+///
+/// ```
+/// use datanium_core::database::Database;
+///
+/// let mut database = Database::new("Shop")?;
+/// let id = database.create_table("Customers")?;
+/// database.rename_table(&id, "Clients")?;
+///
+/// assert_eq!(database.name(), "Shop");
+/// assert_eq!(database.get_table_by_name("Clients")?.id(), id);
+/// # Ok::<(), datanium_core::database::DatabaseError>(())
+/// ```
 pub struct Database {
     name: String,
     tables: BTreeMap<TableId, Table>,
@@ -24,6 +72,14 @@ pub struct Database {
 }
 
 impl Database {
+    /// Creates an empty database with the supplied name.
+    ///
+    /// The name must contain 1 to 64 ASCII characters and match
+    /// `[A-Za-z_][A-Za-z0-9_]*`. Its case is preserved.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DatabaseError::InvalidDatabaseName`] for an invalid name.
     pub fn new(name: &str) -> Result<Self, DatabaseError> {
         if !Database::is_valid_name(name) {
             return Err(DatabaseError::InvalidDatabaseName);
@@ -36,10 +92,23 @@ impl Database {
         })
     }
 
+    /// Returns the database name with its original case.
     pub fn name(&self) -> &str {
         &self.name
     }
 
+    /// Creates an empty table and returns its ID.
+    ///
+    /// The name must contain 1 to 64 ASCII characters and match
+    /// `[A-Za-z_][A-Za-z0-9_]*`. Names are preserved and compared case-sensitively.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DatabaseError::TableAlreadyExists`] if the exact name is taken,
+    /// [`DatabaseError::InvalidTableName`] if the name is invalid, or
+    /// [`DatabaseError::TableIdExhausted`] if the ID counter cannot be advanced.
+    /// These checks run in the order listed. On error, the table collection and
+    /// ID counter remain unchanged.
     pub fn create_table(&mut self, name: &str) -> Result<TableId, DatabaseError> {
         if self.table_name_exists(name) {
             return Err(DatabaseError::TableAlreadyExists);
@@ -63,6 +132,12 @@ impl Database {
         Ok(id)
     }
 
+    /// Borrows the table with the exact, case-sensitive name.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DatabaseError::TableNotFound`] if no name matches. Lookup
+    /// performs exact matching, including for names outside the allowed format.
     pub fn get_table_by_name(&self, name: &str) -> Result<&Table, DatabaseError> {
         self.tables
             .values()
@@ -70,10 +145,30 @@ impl Database {
             .ok_or(DatabaseError::TableNotFound)
     }
 
+    /// Borrows the table with the supplied ID.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DatabaseError::TableNotFound`] if the ID is absent.
     pub fn get_table(&self, id: &TableId) -> Result<&Table, DatabaseError> {
         self.tables.get(id).ok_or(DatabaseError::TableNotFound)
     }
 
+    /// Renames a table while preserving its ID and contents.
+    ///
+    /// The new name must contain 1 to 64 ASCII characters and match
+    /// `[A-Za-z_][A-Za-z0-9_]*`. Its case is preserved and uniqueness is checked
+    /// case-sensitively. Renaming to the table's current name succeeds without
+    /// changing its state. The table remains accessible by its ID. After a name
+    /// change, name lookup uses the new name.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DatabaseError::TableNotFound`] if the ID is absent,
+    /// [`DatabaseError::InvalidTableName`] if the new name is invalid, or
+    /// [`DatabaseError::TableAlreadyExists`] if another table has that exact name.
+    /// These checks run in the order listed. On error, the table collection and
+    /// ID counter remain unchanged.
     pub fn rename_table(&mut self, id: &TableId, new_name: &str) -> Result<(), DatabaseError> {
         if !self.table_exists(id) {
             return Err(DatabaseError::TableNotFound);
@@ -102,6 +197,18 @@ impl Database {
         Ok(())
     }
 
+    /// Finds a table by its exact name and renames it.
+    ///
+    /// Both lookup and uniqueness checks are case-sensitive. The new name must
+    /// contain 1 to 64 ASCII characters and match `[A-Za-z_][A-Za-z0-9_]*`.
+    /// The table's ID and contents are preserved. Using the current name as the
+    /// new name succeeds without changing its state.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DatabaseError::TableNotFound`] if the current name is absent.
+    /// Otherwise, returns the errors documented on [`Self::rename_table`].
+    /// On error, the table collection and ID counter remain unchanged.
     pub fn rename_table_by_name(
         &mut self,
         current_name: &str,

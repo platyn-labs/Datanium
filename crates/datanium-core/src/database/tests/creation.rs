@@ -64,6 +64,28 @@ fn test_table_ids() {
 }
 
 #[test]
+fn creating_two_tables_assigns_distinct_ids_and_preserves_both_tables() {
+    let mut database = Database::new("Database").expect("setup should succeed");
+
+    let first_id = database
+        .create_table("First")
+        .expect("creating the first table should succeed");
+    let second_id = database
+        .create_table("Second")
+        .expect("creating the second table should succeed");
+
+    assert_ne!(first_id, second_id);
+    assert_eq!(database.tables.len(), 2);
+    assert_eq!(database.get_table(&first_id).unwrap().name(), "First");
+    assert_eq!(database.get_table(&second_id).unwrap().name(), "Second");
+    assert_eq!(database.get_table_by_name("First").unwrap().id(), first_id);
+    assert_eq!(
+        database.get_table_by_name("Second").unwrap().id(),
+        second_id
+    );
+}
+
+#[test]
 fn exhausted_table_ids_return_error_without_changing_state() {
     let mut database = Database::new("Database").expect("valid database name should be accepted");
 
@@ -85,13 +107,19 @@ fn exhausted_table_ids_return_error_without_changing_state() {
 #[test]
 fn test_duplicate_table_name() {
     let mut database = Database::new("Database").expect("valid database name should be accepted");
-    let table_id = database.create_table("Table");
-    let same_table_id = database.create_table("Table");
-    assert_eq!(table_id.unwrap(), TableId::new(1));
-    assert!(matches!(
-        same_table_id,
-        Err(DatabaseError::TableAlreadyExists)
-    ));
+    let table_id = database
+        .create_table("Table")
+        .expect("setup should succeed");
+    let table_count_before = database.tables.len();
+    let next_table_id_before = database.next_table_id;
+
+    let result = database.create_table("Table");
+
+    assert_eq!(result, Err(DatabaseError::TableAlreadyExists));
+    assert_eq!(database.tables.len(), table_count_before);
+    assert_eq!(database.next_table_id, next_table_id_before);
+    assert_eq!(database.get_table(&table_id).unwrap().name(), "Table");
+    assert_eq!(database.get_table_by_name("Table").unwrap().id(), table_id);
 }
 
 #[test]
