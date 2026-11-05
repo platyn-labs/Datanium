@@ -45,6 +45,10 @@ impl Table {
             constraints: Vec::new(),
         }
     }
+
+    pub(super) fn name(&self) -> &str {
+        &self.name
+    }
 }
 
 impl TableId {
