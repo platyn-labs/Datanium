@@ -1,101 +1,44 @@
+mod constraint;
+mod table;
+mod value;
+
 use std::collections::BTreeMap;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-struct DatabaseId(u64);
+use self::table::Table;
+pub use self::table::TableId;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-struct TableId(u64);
+#[derive(Debug, PartialEq, Eq)]
+pub enum DatabaseError {
+    TableIdExhausted,
+}
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-struct ColumnId(u64);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-struct RowId(u64);
-
-struct Database {
-    id: DatabaseId,
+pub struct Database {
     name: String,
     tables: BTreeMap<TableId, Table>,
+    next_table_id: u64,
 }
 
-struct Table {
-    id: TableId,
-    name: String,
-    columns: BTreeMap<ColumnId, Column>,
-    rows: BTreeMap<RowId, Row>,
-    constraints: Vec<Constraint>,
-}
+impl Database {
+    pub fn new(name: &str) -> Self {
+        Self {
+            name: name.to_string(),
+            tables: BTreeMap::new(),
+            next_table_id: 1,
+        }
+    }
 
-struct Column {
-    name: String,
-    data_type: DataType,
-}
+    pub fn create_table(&mut self, name: &str) -> Result<TableId, DatabaseError> {
+        let next_table_id = self
+            .next_table_id
+            .checked_add(1)
+            .ok_or(DatabaseError::TableIdExhausted)?;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum DataType {
-    Int,
-    Text,
-    Bool,
-}
+        let id = TableId::new(self.next_table_id);
+        let table = Table::new(id, name);
 
-struct Row {
-    cells: BTreeMap<ColumnId, Cell>,
-}
+        self.tables.insert(id, table);
+        self.next_table_id = next_table_id;
 
-#[derive(Debug, PartialEq, Eq)]
-enum Cell {
-    Valid(Value),
-    Warning { value: Value, message: String },
-    Error { value: Value, error: CellError },
-}
-
-#[derive(Debug, PartialEq, Eq)]
-enum TableError {
-    UnknownColumn(ColumnId),
-    UnknownRow(RowId),
-}
-
-#[derive(Debug, PartialEq, Eq)]
-enum CellError {
-    TypeMismatch {
-        expected: DataType,
-        actual: DataType,
-    },
-}
-
-#[derive(Debug, PartialEq, Eq)]
-enum Value {
-    Null,
-    Int(i64),
-    Text(String),
-    Bool(bool),
-}
-
-enum Constraint {
-    NotNull {
-        column: ColumnId,
-    },
-    Unique {
-        columns: Vec<ColumnId>,
-    },
-    PrimaryKey {
-        columns: Vec<ColumnId>,
-    },
-    ForeignKey {
-        target_table: TableId,
-        columns: Vec<ForeignKeyColumn>,
-        on_delete: ReferentialAction,
-        on_update: ReferentialAction,
-    },
-}
-
-struct ForeignKeyColumn {
-    source: ColumnId,
-    target: ColumnId,
-}
-
-enum ReferentialAction {
-    Restrict,
-    Cascade,
-    SetNull,
+        Ok(id)
+    }
 }
