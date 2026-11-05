@@ -12,7 +12,7 @@ pub(super) struct ColumnId(u64);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 struct RowId(u64);
 
-pub(super) struct Table {
+pub struct Table {
     id: TableId,
     name: String,
     columns: BTreeMap<ColumnId, Column>,
@@ -46,8 +46,16 @@ impl Table {
         }
     }
 
-    pub(super) fn name(&self) -> &str {
+    pub fn id(&self) -> TableId {
+        self.id
+    }
+
+    pub fn name(&self) -> &str {
         &self.name
+    }
+
+    pub(super) fn set_name(&mut self, new_name: &str) {
+        self.name = new_name.to_string()
     }
 }
 
