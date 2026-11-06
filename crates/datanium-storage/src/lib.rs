@@ -1,16 +1,4 @@
-pub mod in_memory;
-
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
-}
+//! Persistent storage for Datanium database data.
+//!
+//! This crate is reserved for loading and saving database state.
+//! Persistence is not implemented yet.

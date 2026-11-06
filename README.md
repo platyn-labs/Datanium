@@ -16,7 +16,7 @@ Datanium is a modular, self-hosted database management system written in Rust.
 | Crate | Description |
 |---|---|
 | datanium-core | Shared types and interfaces |
-| datanium-storage | Persistent storage |
+| datanium-storage | Persistent storage (planned) |
 | datanium-query | Query processing |
 | datanium-server | Database server |
 | datanium-client | Rust client SDK |
