@@ -1,29 +1,20 @@
 use std::collections::BTreeMap;
-use std::fmt;
 
+use super::error::TableError;
+use super::name;
+use super::row::{Row, RowId};
 use crate::database::column::{Column, ColumnId};
 use crate::database::value::Value;
-use crate::helper;
 
+use super::cell::Cell;
 use super::constraint::Constraint;
-use super::value::{Cell, DataType};
+use super::value::DataType;
 
 /// A table identifier allocated by its owning database.
 ///
 /// IDs are scoped to a database and remain unchanged when a table is renamed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct TableId(u64);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-/// A stable identifier scoped to its owning table.
-pub struct RowId(u64);
-
-impl RowId {
-    /// Constructs an ID for lookup; this does not insert a row or reserve an ID.
-    pub fn new(id: u64) -> Self {
-        Self(id)
-    }
-}
 
 /// A table owned by a [`super::Database`].
 ///
@@ -40,31 +31,6 @@ pub struct Table {
     constraints: Vec<Constraint>,
     next_column_id: u64,
     next_row_id: u64,
-}
-
-/// A stored row with one cell for every column in its table.
-pub struct Row {
-    cells: BTreeMap<ColumnId, Cell>,
-}
-
-impl Row {
-    /// Borrows a cell. Returns `None` for a column absent from this row.
-    /// A stored null is returned as `Some(Cell::Valid(Value::Null))`.
-    pub fn get_cell(&self, column: &ColumnId) -> Option<&Cell> {
-        self.cells.get(column)
-    }
-}
-
-#[derive(Debug, PartialEq, Eq)]
-/// A schema, row lookup, or insertion failure.
-pub enum TableError {
-    ColumnIdExhausted,
-    RowIdExhausted,
-    ColumnAlreadyExists,
-    InvalidColumnName,
-    ColumnNotFound,
-    DuplicateColumn(ColumnId),
-    RowNotFound,
 }
 
 impl Table {
@@ -111,7 +77,7 @@ impl Table {
             return Err(TableError::ColumnAlreadyExists);
         }
 
-        if !helper::is_valid_name(name) {
+        if !name::is_valid_name(name) {
             return Err(TableError::InvalidColumnName);
         }
 
@@ -124,7 +90,7 @@ impl Table {
         let column = Column::new(id, name, data_type);
 
         for row in self.rows.values_mut() {
-            row.cells.insert(id, Cell::Valid(super::value::Value::Null));
+            row.add_null_cell(id);
         }
         self.columns.insert(id, column);
         self.next_column_id = next_column_id;
@@ -187,7 +153,7 @@ impl Table {
         }
 
         let id = RowId::new(self.next_row_id);
-        let row = Row { cells };
+        let row = Row::new(cells);
 
         self.rows.insert(id, row);
         self.next_row_id = next_row_id;
@@ -237,22 +203,6 @@ impl TableId {
         Self(id)
     }
 }
-
-impl fmt::Display for TableError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(match self {
-            Self::ColumnIdExhausted => "column ID counter is exhausted",
-            Self::RowIdExhausted => "row ID counter is exhausted",
-            Self::ColumnAlreadyExists => "a column with this name already exists",
-            Self::InvalidColumnName => "invalid column name",
-            Self::ColumnNotFound => "column not found",
-            Self::DuplicateColumn(_) => "a column was supplied more than once",
-            Self::RowNotFound => "row not found",
-        })
-    }
-}
-
-impl std::error::Error for TableError {}
 
 #[cfg(test)]
 mod tests;

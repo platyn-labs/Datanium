@@ -5,52 +5,25 @@
 //! uniqueness checks are case-sensitive, so `Customers` and `customers` are
 //! distinct names.
 
+mod cell;
 mod column;
 mod constraint;
+mod error;
+mod name;
+mod row;
 mod table;
 #[cfg(test)]
 mod tests;
 mod value;
 
 use std::collections::BTreeMap;
-use std::fmt;
 
-use crate::helper;
-
+pub use self::cell::{Cell, CellError};
 pub use self::column::{Column, ColumnId};
-pub use self::table::{Row, RowId, Table, TableError, TableId};
-pub use self::value::{Cell, CellError, DataType, Value};
-
-/// An error returned when creating a database or accessing its tables.
-#[derive(Debug, PartialEq, Eq)]
-pub enum DatabaseError {
-    /// The table ID counter cannot be advanced.
-    TableIdExhausted,
-    /// Another table in this database already has the requested name.
-    TableAlreadyExists,
-    /// The database name does not follow the documented name format.
-    InvalidDatabaseName,
-    /// The table name does not follow the documented name format.
-    InvalidTableName,
-    /// No table matches the requested ID or exact name.
-    TableNotFound,
-}
-
-impl fmt::Display for DatabaseError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let message = match self {
-            Self::TableIdExhausted => "table ID counter is exhausted",
-            Self::TableAlreadyExists => "a table with this name already exists",
-            Self::InvalidDatabaseName => "invalid database name",
-            Self::InvalidTableName => "invalid table name",
-            Self::TableNotFound => "table not found",
-        };
-
-        formatter.write_str(message)
-    }
-}
-
-impl std::error::Error for DatabaseError {}
+pub use self::error::{DatabaseError, TableError};
+pub use self::row::{Row, RowId};
+pub use self::table::{Table, TableId};
+pub use self::value::{DataType, Value};
 
 /// An in-memory database that owns its tables and allocates their IDs.
 ///
@@ -86,7 +59,7 @@ impl Database {
     ///
     /// Returns [`DatabaseError::InvalidDatabaseName`] for an invalid name.
     pub fn new(name: &str) -> Result<Self, DatabaseError> {
-        if !helper::is_valid_name(name) {
+        if !name::is_valid_name(name) {
             return Err(DatabaseError::InvalidDatabaseName);
         }
 
@@ -119,7 +92,7 @@ impl Database {
             return Err(DatabaseError::TableAlreadyExists);
         }
 
-        if !helper::is_valid_name(name) {
+        if !name::is_valid_name(name) {
             return Err(DatabaseError::InvalidTableName);
         }
 
@@ -193,7 +166,7 @@ impl Database {
             return Err(DatabaseError::TableNotFound);
         }
 
-        if !helper::is_valid_name(new_name) {
+        if !name::is_valid_name(new_name) {
             return Err(DatabaseError::InvalidTableName);
         }
 

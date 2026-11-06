@@ -1,4 +1,4 @@
-pub fn is_valid_name(name: &str) -> bool {
+pub(super) fn is_valid_name(name: &str) -> bool {
     let mut bytes = name.bytes();
 
     let valid_start = bytes

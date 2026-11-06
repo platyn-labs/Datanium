@@ -33,16 +33,13 @@ fn new_column_backfills_existing_rows_without_replacing_cells() {
     let first = table.create_column("Name", DataType::Text).unwrap();
     for number in 1..=2 {
         table.rows.insert(
-            RowId(number),
-            Row {
-                cells: BTreeMap::from([(first, Cell::Valid(Value::Null))]),
-            },
+            RowId::new(number),
+            Row::new(BTreeMap::from([(first, Cell::Valid(Value::Null))])),
         );
     }
     let second = table.create_column("Active", DataType::Bool).unwrap();
     for row in table.rows.values() {
-        assert_eq!(row.cells.len(), 2);
-        assert_eq!(row.cells.get(&first), Some(&Cell::Valid(Value::Null)));
-        assert_eq!(row.cells.get(&second), Some(&Cell::Valid(Value::Null)));
+        assert_eq!(row.get_cell(&first), Some(&Cell::Valid(Value::Null)));
+        assert_eq!(row.get_cell(&second), Some(&Cell::Valid(Value::Null)));
     }
 }
