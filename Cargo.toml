@@ -6,7 +6,8 @@ members = [
     "crates/datanium-storage",
     "crates/datanium-query",
     "crates/datanium-server",
-    "crates/datanium-client", "crates/datanium-cli",
+    "crates/datanium-client",
+    "crates/datanium-cli",
 ]
 
 [workspace.package]

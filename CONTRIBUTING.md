@@ -4,7 +4,7 @@
 
 Use GitHub Flow with a short-lived branch for each focused change. Run the
 commands below from the workspace root, where Cargo.toml is located. The example
-uses issue #2 and the branch `feat/storage-interface`. Replace the issue number,
+uses issue #2 and the branch `codex/column-management`. Replace the issue number,
 branch name and commit or PR title for your own task.
 
 ### 1. Choose an issue
@@ -16,13 +16,13 @@ Search open and closed issues before creating one, then read the acceptance
 criteria of the issue you want to work on.
 
 ```sh
-gh issue list --state all --search "storage interface"
+gh issue list --state all --search "column management"
 gh issue view 2
 ```
 
 If an issue is missing, create it interactively with `gh issue create`. Describe
 the expected behavior, acceptance criteria and affected crate. Use an area label
-such as `storage` with `enhancement`, `bug` or `documentation` as appropriate.
+such as `core` with `enhancement`, `bug` or `documentation` as appropriate.
 
 ### 2. Start from an updated main branch
 
@@ -34,13 +34,13 @@ and create your feature branch.
 git status
 git switch main
 git pull --ff-only
-git switch -c feat/storage-interface
+git switch -c feat/column-management
 ```
 
 ### 3. Develop and test the change
 
 Keep each PR focused on one reviewable change. Separate a public contract, its
-first backend and unrelated refactoring. Include tests for the behavior
+first implementation and unrelated refactoring. Include tests for the behavior
 introduced by each PR and a regression test for each bug fix.
 
 Format the code, then run the same checks as CI. Resolve failures before merging.
@@ -68,19 +68,19 @@ git status
 git diff
 git add -p
 git diff --cached
-git commit -m "feat(storage): define storage interface"
+git commit -m "feat(core): implement column management"
 ```
 
 Use Conventional Commits for commits and PR titles. Choose a type such as feat,
-fix, docs, test, refactor, ci or chore, with an optional scope such as `(storage)`.
+fix, docs, test, refactor, ci or chore, with an optional scope such as `(core)`.
 Mark a breaking change with `!` and explain the migration in the PR. You can make
 several small commits on the same feature branch as work progresses.
 
 ### 5. Push the branch and open a pull request
 
 ```sh
-git push -u origin feat/storage-interface
-gh pr create --base main --title "feat(storage): define storage interface" --web
+git push -u origin codex/column-management
+gh pr create --base main --title "feat(core): implement column management" --web
 ```
 
 Complete the PR template in the browser. Describe the change, verification
@@ -126,86 +126,18 @@ advisories weekly and on manual request. When changing dependencies, push your
 commits and run it for your feature branch.
 
 ```sh
-gh workflow run security.yml --ref feat/storage-interface
-gh run list --workflow security.yml --branch feat/storage-interface
+gh workflow run security.yml --ref codex/column-management
+gh run list --workflow security.yml --branch codex/column-management
 ```
 
 Use `gh run view RUN_ID` to inspect the run for your latest commit, replacing
 `RUN_ID` with the ID from the list. The audit runs separately from PR checks.
 
-## Storage contracts and data integrity
+## Data integrity
 
-- Document observable behavior in Rustdoc. Define the meaning of a missing key,
-  an empty value, overwrite and repeated deletion. Return typed errors so a
-  caller can distinguish absence from a storage failure.
-- Specify the state after a failed write. For an operation promised to be
-  atomic, test that readers see either the complete old value or the complete
-  new value. Exercise error paths as well as successful operations.
-- State when a write is acknowledged and what that acknowledgment guarantees.
-  For persistent backends, test reopen and interrupted writes against that
-  guarantee. Handle truncated or corrupt data explicitly and preserve the
-  original data for diagnosis.
-- Document on-disk format changes, version detection and migration or explicit
-  rejection of older formats. Keep compatibility fixtures before changing a
-  released format. Use isolated temporary directories in tests.
-- Keep the backend replaceable. Exercise the same contract against each backend.
-  Measure optimizations with reproducible benchmarks and retain correctness tests.
-
-### Register a backend for the shared storage tests
-
-The shared cases and registration macros live in
-`crates/datanium-storage/tests/contract/mod.rs`. Register each backend in its own
-module in `crates/datanium-storage/tests/storage_contract.rs`, or declare a
-submodule there. The existing in-memory registration shows the required setup.
-
-```rust
-mod in_memory {
-    use datanium_storage::in_memory::InMemoryStorage;
-
-    fn with_storage(run: impl FnOnce(&mut InMemoryStorage)) {
-        let mut storage = InMemoryStorage::new();
-        run(&mut storage);
-    }
-
-    crate::contract::storage_contract_tests!(with_storage);
-}
-```
-
-Use the new backend's type and constructor in its registration. The setup
-function must call `run` exactly once with a fresh, empty backend for each test.
-For a file-backed backend, create an isolated temporary directory per invocation
-and keep it alive until `run` returns. Tests may run concurrently.
-
-For a backend with controllable write failures, also provide a failure setup
-function. It calls the test with a fresh backend and a function that arms the
-next mutation failure. That failure must be triggered by the following `put` or
-`delete`, after the test has populated the initial state. The existing
-`tests/fault_injection/mod.rs` provides a complete example with this signature.
-
-```rust
-fn with_failure(run: impl FnOnce(&mut FallibleStorage, fn(&mut FallibleStorage))) {
-    with_storage(|storage| run(storage, FallibleStorage::arm_failure));
-}
-
-crate::contract::storage_contract_tests!(with_storage, failures = with_failure);
-```
-
-The failure cases check that failed inserts, overwrites and deletions preserve
-the previous state. Use a failure hook in each fallible backend to exercise its
-own error handling. `InMemoryStorage` uses `Infallible` and registers the normal
-cases only.
-
-Add new shared cases as functions over the `Storage` trait in `contract/mod.rs`
-and add their names to the corresponding list in `storage_contract_tests!`.
-Each registered backend then receives a separate Rust test for each case. Keep
-backend-specific checks, such as restart durability, with that backend's tests.
-
-Run the suite or a single case from the workspace root.
-
-```sh
-cargo test --locked -p datanium-storage --test storage_contract
-cargo test --locked -p datanium-storage --test storage_contract -- in_memory::reads_last_write --exact
-```
-
-The existing `Rust Checks` CI job includes this suite through
-`cargo test --workspace --locked`.
+- Document observable behavior in Rustdoc, including null values, type mismatches
+  and errors. Return typed errors so callers can distinguish failure kinds.
+- Failed operations must preserve rows, schema and ID counters. Test error paths
+  as well as successful changes.
+- Keep internal invariants covered by unit tests and exercise complete workflows
+  through the public API in integration tests.
