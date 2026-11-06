@@ -98,6 +98,11 @@ impl Table {
         Ok(id)
     }
 
+    /// Returns all columns in ascending column ID order.
+    pub fn columns(&self) -> impl Iterator<Item = &Column> {
+        self.columns.values()
+    }
+
     /// Borrows a column by ID, or returns `ColumnNotFound`.
     pub fn get_column(&self, id: &ColumnId) -> Result<&Column, TableError> {
         self.columns.get(id).ok_or(TableError::ColumnNotFound)
@@ -184,9 +189,48 @@ impl Table {
         self.add_row(values)
     }
 
+    /// Returns row IDs and rows in ascending row ID order.
+    pub fn rows(&self) -> impl Iterator<Item = (RowId, &Row)> {
+        self.rows.iter().map(|(id, row)| (*id, row))
+    }
+
     /// Borrows the row with this table-local ID, or returns `RowNotFound`.
     pub fn get_row(&self, id: &RowId) -> Result<&Row, TableError> {
         self.rows.get(id).ok_or(TableError::RowNotFound)
+    }
+
+    /// Updates supplied cells while preserving omitted cells and the row ID.
+    ///
+    /// Type mismatches are retained as error cells. Empty input succeeds for an
+    /// existing row. Failed operations leave all rows and ID counters unchanged.
+    ///
+    /// # Errors
+    /// Checks row existence first, then rejects unknown or duplicate columns
+    /// in input order.
+    pub fn update_row(
+        &mut self,
+        id: &RowId,
+        values: impl IntoIterator<Item = (ColumnId, Value)>,
+    ) -> Result<(), TableError> {
+        self.get_row(id)?;
+
+        let mut changes = BTreeMap::new();
+
+        for (column_id, value) in values {
+            let column = self.get_column(&column_id)?;
+
+            if changes.contains_key(&column_id) {
+                return Err(TableError::DuplicateColumn(column_id));
+            }
+
+            changes.insert(column_id, Cell::from_value(value, *column.data_type()));
+        }
+
+        let row = self.rows.get_mut(id).ok_or(TableError::RowNotFound)?;
+
+        row.apply_changes(changes);
+
+        Ok(())
     }
 
     fn column_name_exists(&self, name: &str) -> bool {

@@ -34,4 +34,8 @@ impl Row {
     pub fn get_cell(&self, column: &ColumnId) -> Option<&Cell> {
         self.cells.get(column)
     }
+
+    pub(super) fn apply_changes(&mut self, changes: BTreeMap<ColumnId, Cell>) {
+        self.cells.extend(changes);
+    }
 }

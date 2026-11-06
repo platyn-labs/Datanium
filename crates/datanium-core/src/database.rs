@@ -110,6 +110,11 @@ impl Database {
         Ok(id)
     }
 
+    /// Returns all tables in ascending table ID order.
+    pub fn tables(&self) -> impl Iterator<Item = &Table> {
+        self.tables.values()
+    }
+
     /// Borrows the table with the exact, case-sensitive name.
     ///
     /// # Errors
