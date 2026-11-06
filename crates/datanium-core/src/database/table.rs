@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::fmt;
 
 use crate::database::column::{Column, ColumnId};
+use crate::database::value::Value;
 use crate::helper;
 
 use super::constraint::Constraint;
@@ -14,7 +15,15 @@ use super::value::{Cell, DataType};
 pub struct TableId(u64);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+/// A stable identifier scoped to its owning table.
 pub struct RowId(u64);
+
+impl RowId {
+    /// Constructs an ID for lookup; this does not insert a row or reserve an ID.
+    pub fn new(id: u64) -> Self {
+        Self(id)
+    }
+}
 
 /// A table owned by a [`super::Database`].
 ///
@@ -30,20 +39,32 @@ pub struct Table {
     )]
     constraints: Vec<Constraint>,
     next_column_id: u64,
-    #[expect(dead_code, reason = "Row insertion will be implemented separately")]
     next_row_id: u64,
 }
 
-struct Row {
+/// A stored row with one cell for every column in its table.
+pub struct Row {
     cells: BTreeMap<ColumnId, Cell>,
 }
 
+impl Row {
+    /// Borrows a cell. Returns `None` for a column absent from this row.
+    /// A stored null is returned as `Some(Cell::Valid(Value::Null))`.
+    pub fn get_cell(&self, column: &ColumnId) -> Option<&Cell> {
+        self.cells.get(column)
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
+/// A schema, row lookup, or insertion failure.
 pub enum TableError {
     ColumnIdExhausted,
+    RowIdExhausted,
     ColumnAlreadyExists,
     InvalidColumnName,
     ColumnNotFound,
+    DuplicateColumn(ColumnId),
+    RowNotFound,
 }
 
 impl Table {
@@ -116,16 +137,98 @@ impl Table {
         self.columns.get(id).ok_or(TableError::ColumnNotFound)
     }
 
-    /// Borrows a column by its exact name, or returns `ColumnNotFound`.
-    pub fn get_column_by_name(&self, name: &str) -> Result<&Column, TableError> {
+    /// Borrows a column by its exact, case-sensitive name.
+    /// Accepts owned or borrowed strings without allocating or taking a copy.
+    /// Returns `ColumnNotFound` when absent, including for invalid name formats.
+    pub fn get_column_by_name<S: AsRef<str>>(&self, name: S) -> Result<&Column, TableError> {
+        let name = name.as_ref();
         self.columns
             .values()
             .find(|column| column.name() == name)
             .ok_or(TableError::ColumnNotFound)
     }
 
+    /// Inserts values by column ID and returns a new table-local row ID.
+    ///
+    /// Omitted columns become valid null cells. Explicit null is valid for every
+    /// type. Type mismatches are stored as error cells retaining the original
+    /// value; successful insertion can therefore contain error cells. No implicit
+    /// conversions or constraint enforcement are performed.
+    /// Empty input creates an all-null row, or an empty row in a columnless table.
+    ///
+    /// # Errors
+    /// Checks ID exhaustion first, then processes input in order, rejecting
+    /// unknown columns or duplicate column IDs. Rows and the counter remain
+    /// unchanged on error.
+    pub fn add_row(
+        &mut self,
+        values: impl IntoIterator<Item = (ColumnId, Value)>,
+    ) -> Result<RowId, TableError> {
+        let next_row_id = self
+            .next_row_id
+            .checked_add(1)
+            .ok_or(TableError::RowIdExhausted)?;
+
+        let mut cells = BTreeMap::new();
+
+        for (column_id, value) in values {
+            let column = self.get_column(&column_id)?;
+
+            if cells.contains_key(&column_id) {
+                return Err(TableError::DuplicateColumn(column_id));
+            }
+
+            let cell = Cell::from_value(value, *column.data_type());
+            cells.insert(column_id, cell);
+        }
+
+        for column_id in self.columns.keys() {
+            cells.entry(*column_id).or_insert(Cell::Valid(Value::Null));
+        }
+
+        let id = RowId::new(self.next_row_id);
+        let row = Row { cells };
+
+        self.rows.insert(id, row);
+        self.next_row_id = next_row_id;
+
+        Ok(id)
+    }
+
+    /// Resolves exact, case-sensitive column names and delegates to `add_row`.
+    /// Accepts owned or borrowed names. Omitted values and type mismatches follow
+    /// the same rules as `add_row`.
+    ///
+    /// # Errors
+    /// Resolves names in input order, failing on the first unknown name before
+    /// calling `add_row`. Otherwise returns its errors, including duplicate
+    /// columns. On error, rows and the ID counter remain unchanged.
+    pub fn add_row_by_column_names<S: AsRef<str>>(
+        &mut self,
+        values: impl IntoIterator<Item = (S, Value)>,
+    ) -> Result<RowId, TableError> {
+        let values = values
+            .into_iter()
+            .map(|(name, value)| {
+                let id = self.column_name_to_id(name.as_ref())?;
+                Ok((id, value))
+            })
+            .collect::<Result<Vec<_>, TableError>>()?;
+
+        self.add_row(values)
+    }
+
+    /// Borrows the row with this table-local ID, or returns `RowNotFound`.
+    pub fn get_row(&self, id: &RowId) -> Result<&Row, TableError> {
+        self.rows.get(id).ok_or(TableError::RowNotFound)
+    }
+
     fn column_name_exists(&self, name: &str) -> bool {
         self.columns.values().any(|column| column.name() == name)
+    }
+
+    fn column_name_to_id(&self, name: &str) -> Result<ColumnId, TableError> {
+        Ok(*self.get_column_by_name(name)?.id())
     }
 }
 
@@ -139,9 +242,12 @@ impl fmt::Display for TableError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(match self {
             Self::ColumnIdExhausted => "column ID counter is exhausted",
+            Self::RowIdExhausted => "row ID counter is exhausted",
             Self::ColumnAlreadyExists => "a column with this name already exists",
             Self::InvalidColumnName => "invalid column name",
             Self::ColumnNotFound => "column not found",
+            Self::DuplicateColumn(_) => "a column was supplied more than once",
+            Self::RowNotFound => "row not found",
         })
     }
 }
@@ -149,59 +255,4 @@ impl fmt::Display for TableError {
 impl std::error::Error for TableError {}
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn rejected_columns_preserve_state_and_counter() {
-        let mut table = Table::new(TableId::new(1), "Items");
-        let id = table.create_column("Name", DataType::Text).unwrap();
-        let long_name = "a".repeat(65);
-        for name in ["", "1name", "my name", "my-name", "ä", "name\n", &long_name] {
-            assert_eq!(
-                table.create_column(name, DataType::Int),
-                Err(TableError::InvalidColumnName)
-            );
-            assert_eq!(table.columns.len(), 1);
-            assert_eq!(table.next_column_id, 2);
-        }
-        assert_eq!(
-            table.create_column("Name", DataType::Bool),
-            Err(TableError::ColumnAlreadyExists)
-        );
-        table.next_column_id = u64::MAX;
-        assert_eq!(
-            table.create_column("Other", DataType::Int),
-            Err(TableError::ColumnIdExhausted)
-        );
-        assert_eq!(table.next_column_id, u64::MAX);
-        assert_eq!(table.columns.len(), 1);
-        assert_eq!(table.get_column(&id).unwrap().data_type(), &DataType::Text);
-    }
-
-    #[test]
-    fn new_column_backfills_existing_rows_without_replacing_cells() {
-        let mut table = Table::new(TableId::new(1), "Items");
-        let first = table.create_column("Name", DataType::Text).unwrap();
-        for number in 1..=2 {
-            table.rows.insert(
-                RowId(number),
-                Row {
-                    cells: BTreeMap::from([(first, Cell::Valid(super::super::value::Value::Null))]),
-                },
-            );
-        }
-        let second = table.create_column("Active", DataType::Bool).unwrap();
-        for row in table.rows.values() {
-            assert_eq!(row.cells.len(), 2);
-            assert_eq!(
-                row.cells.get(&first),
-                Some(&Cell::Valid(super::super::value::Value::Null))
-            );
-            assert_eq!(
-                row.cells.get(&second),
-                Some(&Cell::Valid(super::super::value::Value::Null))
-            );
-        }
-    }
-}
+mod tests;

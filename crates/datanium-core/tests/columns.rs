@@ -6,6 +6,10 @@ fn public_api_creates_and_reads_columns() -> Result<(), Box<dyn std::error::Erro
     let table_id = database.create_table("Items")?;
     let table = database.get_table_mut(&table_id)?;
     let id = table.create_column("Name", DataType::Text)?;
+    assert_eq!(table.get_column_by_name(String::from("Name"))?.id(), &id);
+    let borrowed = String::from("Name");
+    assert_eq!(table.get_column_by_name(&borrowed)?.id(), &id);
+    assert_eq!(borrowed, "Name");
     let lower = table.create_column("name", DataType::Int)?;
     assert_ne!(id, lower);
     assert_eq!(table.get_column(&id)?.name(), "Name");
@@ -49,6 +53,8 @@ fn public_api_creates_and_reads_columns() -> Result<(), Box<dyn std::error::Erro
 fn table_errors_expose_standard_error_messages() {
     for error in [
         TableError::ColumnIdExhausted,
+        TableError::RowIdExhausted,
+        TableError::RowNotFound,
         TableError::ColumnAlreadyExists,
         TableError::InvalidColumnName,
         TableError::ColumnNotFound,

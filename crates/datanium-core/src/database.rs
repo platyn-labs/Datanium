@@ -18,8 +18,8 @@ use std::fmt;
 use crate::helper;
 
 pub use self::column::{Column, ColumnId};
-pub use self::table::{Table, TableError, TableId};
-pub use self::value::DataType;
+pub use self::table::{Row, RowId, Table, TableError, TableId};
+pub use self::value::{Cell, CellError, DataType, Value};
 
 /// An error returned when creating a database or accessing its tables.
 #[derive(Debug, PartialEq, Eq)]
