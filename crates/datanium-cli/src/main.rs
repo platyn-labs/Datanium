@@ -1,36 +1,35 @@
-use std::{env, process::ExitCode};
+mod commands;
 
-fn main() -> ExitCode {
-    let args: Vec<String> = env::args().skip(1).collect();
+use clap::{Parser, Subcommand};
 
-    match args.as_slice() {
-        [] => {
-            print_help();
-            ExitCode::SUCCESS
-        }
-        [arg] if arg == "--help" || arg == "-h" => {
-            print_help();
-            ExitCode::SUCCESS
-        }
-        [arg] if arg == "--version" || arg == "-v" => {
-            println!("datanium {}", env!("CARGO_PKG_VERSION"));
-            ExitCode::SUCCESS
-        }
-        _ => {
-            eprintln!("Unknown arguments. Use datanium --help.");
-            ExitCode::from(2)
-        }
-    }
+use crate::commands::database::DatabaseCommand;
+
+#[derive(Parser)]
+#[command(name = "datanium", version, about = "Manage Datanium databases")]
+pub struct Cli {
+    #[command(subcommand)]
+    pub command: Command,
 }
 
-fn print_help() {
-    println!(
-        "Datanium CLI
-Verwendung:
-    datanium [Option]
+#[derive(Subcommand)]
+pub enum Command {
+    /// Create and manage databases.
+    #[command(subcommand)]
+    Database(DatabaseCommand),
+}
 
-Option:
-    -h, --help     show help
-    -v, --version  show version"
-    )
+fn main() -> std::process::ExitCode {
+    use std::process::ExitCode;
+
+    let result = match Cli::parse().command {
+        Command::Database(command) => command.run(),
+    };
+
+    match result {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            eprint!("Error: {error}");
+            ExitCode::FAILURE
+        }
+    }
 }
