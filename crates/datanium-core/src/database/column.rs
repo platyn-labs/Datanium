@@ -34,6 +34,10 @@ impl Column {
         &self.name
     }
 
+    pub(super) fn set_name(&mut self, new_name: &str) {
+        self.name = new_name.to_string()
+    }
+
     pub fn data_type(&self) -> &DataType {
         &self.data_type
     }

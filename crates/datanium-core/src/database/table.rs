@@ -119,6 +119,43 @@ impl Table {
             .ok_or(TableError::ColumnNotFound)
     }
 
+    /// Renames a column by its table-local ID.
+    ///
+    /// The new name must contain 1 to 64 ASCII characters and match
+    /// `[A-Za-z_][A-Za-z0-9_]*`. Its case is preserved and uniqueness within
+    /// the table is checked case-sensitively. Using the current name succeeds
+    /// without changing the column.
+    ///
+    /// The column keeps its ID and data type. Existing cell values and their
+    /// validation states are preserved. After a name change,
+    /// [`Self::get_column_by_name`] resolves the column by its new name.
+    ///
+    /// # Errors
+    /// Returns [`TableError::ColumnNotFound`] if the ID is absent,
+    /// [`TableError::InvalidColumnName`] if the new name is invalid, or
+    /// [`TableError::ColumnAlreadyExists`] if another column has that exact name.
+    /// These checks run in the order listed. On error, the table is unchanged.
+    pub fn rename_column(&mut self, id: &ColumnId, new_name: &str) -> Result<(), TableError> {
+        let column = self.get_column(id)?;
+
+        if !name::is_valid_name(new_name) {
+            return Err(TableError::InvalidColumnName);
+        }
+
+        if column.name() == new_name {
+            return Ok(());
+        }
+
+        if self.column_name_exists(new_name) {
+            return Err(TableError::ColumnAlreadyExists);
+        }
+
+        let column = self.columns.get_mut(id).ok_or(TableError::ColumnNotFound)?;
+        column.set_name(new_name);
+
+        Ok(())
+    }
+
     /// Inserts values by column ID and returns a new table-local row ID.
     ///
     /// Omitted columns become valid null cells. Explicit null is valid for every
