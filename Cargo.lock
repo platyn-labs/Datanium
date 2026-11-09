@@ -303,7 +303,7 @@ name = "datanium-cli"
 version = "0.1.1"
 dependencies = [
  "clap",
- "datanium-client",
+ "datanium-storage",
 ]
 
 [[package]]

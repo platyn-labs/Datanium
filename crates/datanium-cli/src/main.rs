@@ -1,8 +1,9 @@
 mod commands;
-mod session;
+
+use std::{env, error::Error, process::ExitCode};
 
 use clap::{Parser, Subcommand};
-use datanium_client::DataniumClient;
+use datanium_storage::DatabaseStore;
 
 use crate::commands::database::DatabaseCommand;
 
@@ -11,8 +12,6 @@ use crate::commands::database::DatabaseCommand;
 pub struct Cli {
     #[command(subcommand)]
     pub command: Command,
-    #[arg(long, global = true, default_value = "http://127.0.0.1:8080")]
-    pub server_url: String,
 }
 
 #[derive(Subcommand)]
@@ -20,25 +19,20 @@ pub enum Command {
     /// Create and manage databases.
     #[command(subcommand)]
     Database(DatabaseCommand),
-    /// Open an interactive session with a Datanium server.
-    Connect {
-        /// Base URL of the Datanium server.
-        url: String,
-    },
 }
 
-fn main() -> std::process::ExitCode {
-    use std::process::ExitCode;
-
+fn run() -> Result<(), Box<dyn Error>> {
     let cli = Cli::parse();
-    let result = match cli.command {
+    match cli.command {
         Command::Database(command) => {
-            DataniumClient::new(&cli.server_url).and_then(|client| command.run(&client))
+            let store = DatabaseStore::new(env::current_dir()?);
+            command.run(&store)
         }
-        Command::Connect { url } => session::run(&url),
-    };
+    }
+}
 
-    match result {
+fn main() -> ExitCode {
+    match run() {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             eprintln!("Error: {error}");

@@ -5,7 +5,7 @@
 
 use std::{
     ffi::OsStr,
-    fs,
+    fmt, fs,
     io::{self, Read, Write},
     path::PathBuf,
 };
@@ -22,6 +22,35 @@ pub enum StorageError {
     InvalidFormat(PathBuf),
     Io { path: PathBuf, source: io::Error },
     UnsupportedVersion { path: PathBuf, version: u16 },
+}
+
+impl fmt::Display for StorageError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::InvalidDatabaseName => write!(f, "Invalid database name."),
+            Self::AreadyExists(path) => {
+                write!(f, "Database already exists at '{}'.", path.display())
+            }
+            Self::InvalidFormat(path) => write!(f, "Invalid database file '{}'.", path.display()),
+            Self::Io { path, source } => {
+                write!(f, "Could not access '{}': {source}", path.display())
+            }
+            Self::UnsupportedVersion { path, version } => write!(
+                f,
+                "Unsupported database format version {version} in '{}'.",
+                path.display()
+            ),
+        }
+    }
+}
+
+impl std::error::Error for StorageError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Io { source, .. } => Some(source),
+            _ => None,
+        }
+    }
 }
 
 pub struct DatabaseStore {
