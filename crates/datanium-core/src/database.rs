@@ -215,6 +215,21 @@ impl Database {
         self.rename_table(&id, new_name)
     }
 
+    /// Removes a table by its database-local ID, including its columns and rows.
+    ///
+    /// The name becomes available for a new table. The ID counter is unchanged,
+    /// so a new table with that name receives a fresh ID.
+    ///
+    /// # Errors
+    /// Returns [`DatabaseError::TableNotFound`] if the ID is absent and leaves
+    /// the database unchanged.
+    pub fn delete_table(&mut self, id: &TableId) -> Result<(), DatabaseError> {
+        self.tables
+            .remove(id)
+            .map(|_| ())
+            .ok_or(DatabaseError::TableNotFound)
+    }
+
     fn table_exists(&self, id: &TableId) -> bool {
         self.tables.contains_key(id)
     }

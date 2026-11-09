@@ -38,4 +38,9 @@ impl Row {
     pub(super) fn apply_changes(&mut self, changes: BTreeMap<ColumnId, Cell>) {
         self.cells.extend(changes);
     }
+
+    /// Removes the cell for a deleted column if it is present.
+    pub(super) fn remove_cell(&mut self, column: &ColumnId) {
+        self.cells.remove(column);
+    }
 }

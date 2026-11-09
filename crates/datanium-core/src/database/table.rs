@@ -156,6 +156,25 @@ impl Table {
         Ok(())
     }
 
+    /// Removes a column by its table-local ID and removes its cell from each row.
+    ///
+    /// Other columns and cells are preserved. Deleting the last column leaves
+    /// the rows in place with no cells. The name becomes available again, and
+    /// the column ID counter is unchanged.
+    ///
+    /// # Errors
+    /// Returns [`TableError::ColumnNotFound`] if the ID is absent and leaves the
+    /// table unchanged.
+    pub fn delete_column(&mut self, id: &ColumnId) -> Result<(), TableError> {
+        self.columns.remove(id).ok_or(TableError::ColumnNotFound)?;
+
+        for row in self.rows.values_mut() {
+            row.remove_cell(id);
+        }
+
+        Ok(())
+    }
+
     /// Inserts values by column ID and returns a new table-local row ID.
     ///
     /// Omitted columns become valid null cells. Explicit null is valid for every
@@ -268,6 +287,20 @@ impl Table {
         row.apply_changes(changes);
 
         Ok(())
+    }
+
+    /// Removes a row by its table-local ID, including all of its cells.
+    ///
+    /// Other rows and the row ID counter are unchanged.
+    ///
+    /// # Errors
+    /// Returns [`TableError::RowNotFound`] if the ID is absent and leaves the
+    /// table unchanged.
+    pub fn delete_row(&mut self, id: &RowId) -> Result<(), TableError> {
+        self.rows
+            .remove(id)
+            .map(|_| ())
+            .ok_or(TableError::RowNotFound)
     }
 
     fn column_name_exists(&self, name: &str) -> bool {

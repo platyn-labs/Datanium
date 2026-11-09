@@ -122,3 +122,76 @@ fn columnless_rows_can_be_inserted_and_later_backfilled() -> Result<(), Box<dyn 
     );
     Ok(())
 }
+
+#[test]
+fn delete_row_removes_only_the_requested_row() -> Result<(), Box<dyn std::error::Error>> {
+    let mut db = Database::new("Shop")?;
+    let table_id = db.create_table("Items")?;
+    let table = db.get_table_mut(&table_id)?;
+    let column = table.create_column("Count", DataType::Int)?;
+    let deleted = table.add_row([(column, Value::Int(3))])?;
+    let retained = table.add_row([(column, Value::Int(7))])?;
+
+    assert_eq!(table.delete_row(&deleted), Ok(()));
+
+    assert!(matches!(
+        table.get_row(&deleted),
+        Err(TableError::RowNotFound)
+    ));
+    assert_eq!(
+        table.rows().map(|(id, _)| id).collect::<Vec<_>>(),
+        [retained]
+    );
+    assert_eq!(
+        table.get_row(&retained)?.get_cell(&column),
+        Some(&Cell::Valid(Value::Int(7)))
+    );
+    assert_eq!(table.delete_row(&deleted), Err(TableError::RowNotFound));
+    Ok(())
+}
+
+#[test]
+fn delete_row_rejects_unknown_id_without_changing_rows() -> Result<(), Box<dyn std::error::Error>> {
+    let mut db = Database::new("Shop")?;
+    let table_id = db.create_table("Items")?;
+    let table = db.get_table_mut(&table_id)?;
+    let column = table.create_column("Count", DataType::Int)?;
+    let retained = table.add_row([(column, Value::Int(7))])?;
+
+    assert_eq!(
+        table.delete_row(&RowId::new(999)),
+        Err(TableError::RowNotFound)
+    );
+
+    assert_eq!(
+        table.rows().map(|(id, _)| id).collect::<Vec<_>>(),
+        [retained]
+    );
+    assert_eq!(
+        table.get_row(&retained)?.get_cell(&column),
+        Some(&Cell::Valid(Value::Int(7)))
+    );
+    Ok(())
+}
+
+#[test]
+fn delete_row_does_not_reuse_the_deleted_id() -> Result<(), Box<dyn std::error::Error>> {
+    let mut db = Database::new("Shop")?;
+    let table_id = db.create_table("Items")?;
+    let table = db.get_table_mut(&table_id)?;
+    let deleted = table.add_row([])?;
+
+    table.delete_row(&deleted)?;
+    let inserted = table.add_row([])?;
+
+    assert!(inserted > deleted);
+    assert!(matches!(
+        table.get_row(&deleted),
+        Err(TableError::RowNotFound)
+    ));
+    assert_eq!(
+        table.rows().map(|(id, _)| id).collect::<Vec<_>>(),
+        [inserted]
+    );
+    Ok(())
+}
