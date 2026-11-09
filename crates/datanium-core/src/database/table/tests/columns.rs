@@ -50,7 +50,7 @@ fn rename_column_preserves_id_type_and_cells_and_updates_name_lookup() -> Result
     let id = table.create_column("Name", DataType::Text)?;
     let other = table.create_column("Active", DataType::Bool)?;
     let valid = table.add_row([(id, Value::Text("Book".into())), (other, Value::Bool(true))])?;
-    let invalid = table.add_row([(id, Value::Int(42))])?;
+    let warned = table.add_row([(id, Value::Int(42))])?;
     let next_column_id = table.next_column_id;
 
     table.rename_column(&id, "Label")?;
@@ -74,10 +74,10 @@ fn rename_column_preserves_id_type_and_cells_and_updates_name_lookup() -> Result
         Some(&Cell::Valid(Value::Bool(true)))
     );
     assert_eq!(
-        table.get_row(&invalid)?.get_cell(&id),
-        Some(&Cell::Error {
+        table.get_row(&warned)?.get_cell(&id),
+        Some(&Cell::Warning {
             value: Value::Int(42),
-            error: crate::database::CellError::TypeMismatch {
+            warning: crate::database::CellWarning::TypeMismatch {
                 expected: DataType::Text,
                 actual: DataType::Int,
             },
@@ -246,6 +246,23 @@ fn delete_column_rejects_unknown_id_without_changing_state() -> Result<(), Table
     );
     assert_eq!(table.next_column_id, next_column_id);
     assert_eq!(table.next_row_id, next_row_id);
+    Ok(())
+}
+
+#[test]
+fn delete_column_removes_only_its_not_null_rule() -> Result<(), TableError> {
+    let mut table = Table::new(TableId::new(1), "Items");
+    let deleted = table.create_column("Name", DataType::Text)?;
+    let retained = table.create_column("Count", DataType::Int)?;
+    table.add_not_null_constraint(deleted)?;
+    table.add_not_null_constraint(retained)?;
+
+    table.delete_column(&deleted)?;
+
+    assert!(matches!(
+        table.constraints.as_slice(),
+        [Constraint::NotNull { column }] if *column == retained
+    ));
     Ok(())
 }
 

@@ -24,10 +24,6 @@ pub struct Table {
     name: String,
     columns: BTreeMap<ColumnId, Column>,
     rows: BTreeMap<RowId, Row>,
-    #[expect(
-        dead_code,
-        reason = "Constraint enforcement will be implemented separately"
-    )]
     constraints: Vec<Constraint>,
     next_column_id: u64,
     next_row_id: u64,
@@ -156,7 +152,7 @@ impl Table {
         Ok(())
     }
 
-    /// Removes a column by its table-local ID and removes its cell from each row.
+    /// Removes a column by its table-local ID, its cells, and its `NotNull` rule.
     ///
     /// Other columns and cells are preserved. Deleting the last column leaves
     /// the rows in place with no cells. The name becomes available again, and
@@ -167,6 +163,9 @@ impl Table {
     /// table unchanged.
     pub fn delete_column(&mut self, id: &ColumnId) -> Result<(), TableError> {
         self.columns.remove(id).ok_or(TableError::ColumnNotFound)?;
+        self.constraints.retain(
+            |constraint| !matches!(constraint, Constraint::NotNull { column } if column == id),
+        );
 
         for row in self.rows.values_mut() {
             row.remove_cell(id);
@@ -177,10 +176,9 @@ impl Table {
 
     /// Inserts values by column ID and returns a new table-local row ID.
     ///
-    /// Omitted columns become valid null cells. Explicit null is valid for every
-    /// type. Type mismatches are stored as error cells retaining the original
-    /// value; successful insertion can therefore contain error cells. No implicit
-    /// conversions or constraint enforcement are performed.
+    /// Omitted columns receive null cells, just like explicit null inputs.
+    /// Nulls in `NotNull` columns and type mismatches are stored with a warning
+    /// that preserves the original value. No implicit conversions are performed.
     /// Empty input creates an all-null row, or an empty row in a columnless table.
     ///
     /// # Errors
@@ -205,12 +203,14 @@ impl Table {
                 return Err(TableError::DuplicateColumn(column_id));
             }
 
-            let cell = Cell::from_value(value, *column.data_type());
+            let cell = self.cell_for_value(column, value);
             cells.insert(column_id, cell);
         }
 
-        for column_id in self.columns.keys() {
-            cells.entry(*column_id).or_insert(Cell::Valid(Value::Null));
+        for column in self.columns.values() {
+            cells
+                .entry(*column.id())
+                .or_insert_with(|| self.cell_for_value(column, Value::Null));
         }
 
         let id = RowId::new(self.next_row_id);
@@ -257,8 +257,9 @@ impl Table {
 
     /// Updates supplied cells while preserving omitted cells and the row ID.
     ///
-    /// Type mismatches are retained as error cells. Empty input succeeds for an
-    /// existing row. Failed operations leave all rows and ID counters unchanged.
+    /// Updated cells follow the same validation rules as [`Self::add_row`].
+    /// Empty input succeeds for an existing row. Failed operations leave all
+    /// rows and ID counters unchanged.
     ///
     /// # Errors
     /// Checks row existence first, then rejects unknown or duplicate columns
@@ -279,7 +280,7 @@ impl Table {
                 return Err(TableError::DuplicateColumn(column_id));
             }
 
-            changes.insert(column_id, Cell::from_value(value, *column.data_type()));
+            changes.insert(column_id, self.cell_for_value(column, value));
         }
 
         let row = self.rows.get_mut(id).ok_or(TableError::RowNotFound)?;
@@ -301,6 +302,38 @@ impl Table {
             .remove(id)
             .map(|_| ())
             .ok_or(TableError::RowNotFound)
+    }
+
+    pub(super) fn add_not_null_constraint(&mut self, column: ColumnId) -> Result<(), TableError> {
+        self.get_column(&column)?;
+
+        if self.requires_non_null(&column) {
+            return Ok(());
+        }
+
+        self.constraints.push(Constraint::NotNull { column });
+
+        for row in self.rows.values_mut() {
+            if let Some(cell @ Cell::Valid(Value::Null)) = row.get_cell_mut(&column) {
+                *cell = Cell::not_null_warning();
+            }
+        }
+
+        Ok(())
+    }
+
+    fn cell_for_value(&self, column: &Column, value: Value) -> Cell {
+        if matches!(value, Value::Null) && self.requires_non_null(column.id()) {
+            return Cell::not_null_warning();
+        }
+
+        Cell::from_value(value, *column.data_type())
+    }
+
+    fn requires_non_null(&self, id: &ColumnId) -> bool {
+        self.constraints
+            .iter()
+            .any(|constraint| matches!(constraint, Constraint::NotNull { column } if column == id))
     }
 
     fn column_name_exists(&self, name: &str) -> bool {

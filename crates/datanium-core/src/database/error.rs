@@ -15,6 +15,10 @@ pub enum DatabaseError {
     InvalidTableName,
     /// No table matches the requested ID or exact name.
     TableNotFound,
+    /// The constraint definition is invalid for the selected table.
+    Constraint(TableError),
+    /// This kind of constraint is not implemented yet.
+    UnsupportedConstraint,
 }
 
 impl fmt::Display for DatabaseError {
@@ -25,13 +29,22 @@ impl fmt::Display for DatabaseError {
             Self::InvalidDatabaseName => "invalid database name",
             Self::InvalidTableName => "invalid table name",
             Self::TableNotFound => "table not found",
+            Self::Constraint(error) => return write!(formatter, "invalid constraint: {error}"),
+            Self::UnsupportedConstraint => "unsupported constraint",
         };
 
         formatter.write_str(message)
     }
 }
 
-impl std::error::Error for DatabaseError {}
+impl std::error::Error for DatabaseError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Constraint(error) => Some(error),
+            _ => None,
+        }
+    }
+}
 
 #[derive(Debug, PartialEq, Eq)]
 /// A schema, row lookup, or insertion failure.

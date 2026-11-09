@@ -30,9 +30,13 @@ impl Row {
     }
 
     /// Borrows a cell. Returns `None` for a column absent from this row.
-    /// A stored null is returned as `Some(Cell::Valid(Value::Null))`.
+    /// A stored null is returned as a cell containing `Value::Null`.
     pub fn get_cell(&self, column: &ColumnId) -> Option<&Cell> {
         self.cells.get(column)
+    }
+
+    pub(super) fn get_cell_mut(&mut self, column: &ColumnId) -> Option<&mut Cell> {
+        self.cells.get_mut(column)
     }
 
     pub(super) fn apply_changes(&mut self, changes: BTreeMap<ColumnId, Cell>) {

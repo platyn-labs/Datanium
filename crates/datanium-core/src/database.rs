@@ -18,8 +18,9 @@ mod value;
 
 use std::collections::BTreeMap;
 
-pub use self::cell::{Cell, CellError};
+pub use self::cell::{Cell, CellError, CellWarning};
 pub use self::column::{Column, ColumnId};
+pub use self::constraint::{Constraint, ForeignKeyColumn, ReferentialAction};
 pub use self::error::{DatabaseError, TableError};
 pub use self::row::{Row, RowId};
 pub use self::table::{Table, TableId};
@@ -228,6 +229,31 @@ impl Database {
             .remove(id)
             .map(|_| ())
             .ok_or(DatabaseError::TableNotFound)
+    }
+
+    /// Adds a constraint to a table and updates affected stored cell warnings.
+    ///
+    /// `NotNull` keeps null values and marks them with [`CellWarning::NotNull`].
+    /// Adding the same `NotNull` rule again succeeds without changing the table.
+    ///
+    /// # Errors
+    /// Returns [`DatabaseError::TableNotFound`] for an unknown table,
+    /// [`DatabaseError::Constraint`] for an invalid definition, or
+    /// [`DatabaseError::UnsupportedConstraint`] for a rule other than `NotNull`.
+    /// On error, the database is unchanged.
+    pub fn add_constraint(
+        &mut self,
+        table_id: &TableId,
+        constraint: Constraint,
+    ) -> Result<(), DatabaseError> {
+        let table = self.get_table_mut(table_id)?;
+
+        match constraint {
+            Constraint::NotNull { column } => table
+                .add_not_null_constraint(column)
+                .map_err(DatabaseError::Constraint),
+            _ => Err(DatabaseError::UnsupportedConstraint),
+        }
     }
 
     fn table_exists(&self, id: &TableId) -> bool {

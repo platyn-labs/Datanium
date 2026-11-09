@@ -1,4 +1,4 @@
-use datanium_core::database::{Cell, CellError, DataType, Database, Value};
+use datanium_core::database::{Cell, CellWarning, DataType, Database, Value};
 
 #[test]
 fn partial_updates_preserve_omitted_cells_other_rows_and_identity()
@@ -28,17 +28,6 @@ fn partial_updates_preserve_omitted_cells_other_rows_and_identity()
         table.rows().map(|(id, _)| id).collect::<Vec<_>>(),
         vec![row, other]
     );
-    table.update_row(&row, [(count, Value::Text("wrong".into()))])?;
-    assert_eq!(
-        table.get_row(&row)?.get_cell(&count),
-        Some(&Cell::Error {
-            value: Value::Text("wrong".into()),
-            error: CellError::TypeMismatch {
-                expected: DataType::Int,
-                actual: DataType::Text
-            }
-        })
-    );
     table.update_row(&row, [(count, Value::Null), (name, Value::Null)])?;
     for column in [count, name] {
         assert_eq!(
@@ -50,6 +39,37 @@ fn partial_updates_preserve_omitted_cells_other_rows_and_identity()
     assert_eq!(
         table.get_row(&row)?.get_cell(&count),
         Some(&Cell::Valid(Value::Int(4)))
+    );
+    Ok(())
+}
+
+#[test]
+fn update_preserves_a_type_warning_until_the_value_is_corrected()
+-> Result<(), Box<dyn std::error::Error>> {
+    let mut db = Database::new("Shop")?;
+    let id = db.create_table("Items")?;
+    let table = db.get_table_mut(&id)?;
+    let count = table.create_column("Count", DataType::Int)?;
+    let name = table.create_column("Name", DataType::Text)?;
+    let row = table.add_row([(count, Value::Int(1))])?;
+    let warning = Cell::Warning {
+        value: Value::Text("12 Stück".into()),
+        warning: CellWarning::TypeMismatch {
+            expected: DataType::Int,
+            actual: DataType::Text,
+        },
+    };
+
+    table.update_row(&row, [(count, Value::Text("12 Stück".into()))])?;
+    assert_eq!(table.get_row(&row)?.get_cell(&count), Some(&warning));
+
+    table.update_row(&row, [(name, Value::Text("Book".into()))])?;
+    assert_eq!(table.get_row(&row)?.get_cell(&count), Some(&warning));
+
+    table.update_row(&row, [(count, Value::Int(12))])?;
+    assert_eq!(
+        table.get_row(&row)?.get_cell(&count),
+        Some(&Cell::Valid(Value::Int(12)))
     );
     Ok(())
 }

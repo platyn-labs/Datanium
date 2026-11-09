@@ -1,11 +1,8 @@
 use super::column::ColumnId;
 use super::table::TableId;
 
-#[expect(
-    dead_code,
-    reason = "Reserved for upcoming row and constraint operations"
-)]
-pub(super) enum Constraint {
+/// A rule that can be defined for a table.
+pub enum Constraint {
     NotNull {
         column: ColumnId,
     },
@@ -23,20 +20,14 @@ pub(super) enum Constraint {
     },
 }
 
-#[expect(
-    dead_code,
-    reason = "Reserved for upcoming row and constraint operations"
-)]
-pub(super) struct ForeignKeyColumn {
-    source: ColumnId,
-    target: ColumnId,
+/// A pair of source and target columns in a foreign key.
+pub struct ForeignKeyColumn {
+    pub source: ColumnId,
+    pub target: ColumnId,
 }
 
-#[expect(
-    dead_code,
-    reason = "Reserved for upcoming row and constraint operations"
-)]
-pub(super) enum ReferentialAction {
+/// How a foreign key responds to a change in the referenced row.
+pub enum ReferentialAction {
     Restrict,
     Cascade,
     SetNull,

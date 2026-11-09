@@ -1,4 +1,4 @@
-use datanium_core::database::{Cell, CellError, DataType, Database, RowId, TableError, Value};
+use datanium_core::database::{Cell, CellWarning, DataType, Database, RowId, TableError, Value};
 
 #[test]
 fn inserts_and_reads_owned_and_borrowed_names() -> Result<(), Box<dyn std::error::Error>> {
@@ -67,8 +67,8 @@ fn inserts_and_reads_owned_and_borrowed_names() -> Result<(), Box<dyn std::error
 }
 
 #[test]
-fn type_matrix_preserves_original_values_and_accepts_null() -> Result<(), Box<dyn std::error::Error>>
-{
+fn insert_warns_on_type_mismatches_preserves_original_values_and_accepts_null()
+-> Result<(), Box<dyn std::error::Error>> {
     let mut db = Database::new("Shop")?;
     let id = db.create_table("Items")?;
     let table = db.get_table_mut(&id)?;
@@ -92,9 +92,9 @@ fn type_matrix_preserves_original_values_and_accepts_null() -> Result<(), Box<dy
             let wanted = if actual == expected {
                 Cell::Valid(original)
             } else {
-                Cell::Error {
+                Cell::Warning {
                     value: original,
-                    error: CellError::TypeMismatch { expected, actual },
+                    warning: CellWarning::TypeMismatch { expected, actual },
                 }
             };
             assert_eq!(table.get_row(&row)?.get_cell(&column), Some(&wanted));
