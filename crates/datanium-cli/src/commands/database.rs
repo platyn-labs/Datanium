@@ -1,7 +1,7 @@
 use std::error::Error;
 
 use clap::{Args, Subcommand};
-use datanium_core::database::Database;
+use datanium_client::DataniumClient;
 
 #[derive(Subcommand)]
 pub enum DatabaseCommand {
@@ -13,18 +13,20 @@ pub enum DatabaseCommand {
 }
 
 impl DatabaseCommand {
-    pub fn run(self) -> Result<(), Box<dyn Error>> {
+    pub fn run(self, client: &DataniumClient) -> Result<(), Box<dyn Error>> {
         match self {
-            Self::Create(args) => create(args),
-            Self::List => Err("Listing databases requires persistent storage.".into()),
+            Self::Create(args) => {
+                let database = client.create_database(&args.name)?;
+                println!("Created database '{}'.", database.name);
+            }
+            Self::List => {
+                for database in client.list_databases()? {
+                    println!("{}", database.name);
+                }
+            }
         }
+        Ok(())
     }
-}
-
-fn create(args: CreateArgs) -> Result<(), Box<dyn Error>> {
-    let database = Database::new(&args.name)?;
-    println!("Created database '{}' in memory.", database.name());
-    Ok(())
 }
 
 #[derive(Args)]

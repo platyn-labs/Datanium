@@ -6,3 +6,5 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+datanium-protocol = { version = "0.1.0", path = "../datanium-protocol" }
+reqwest = { version = "0.13.5", features = ["blocking", "json"] }

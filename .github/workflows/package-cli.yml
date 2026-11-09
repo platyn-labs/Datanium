@@ -2,6 +2,9 @@ name: Package Datanium CLI
 
 on:
   workflow_dispatch:
+  push:
+    tags:
+      - "v*"
 
 permissions:
   contents: read
@@ -11,7 +14,22 @@ jobs:
     runs-on: ubuntu-24.04
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Read package version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=$(python3 -c \
+            'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["workspace"]["package"]["version"])')
+          if [[ "$GITHUB_EVENT_NAME" == push && "$GITHUB_REF_NAME" != "v$version" ]]; then
+            printf 'Tag %s does not match workspace version %s.\n' "$GITHUB_REF_NAME" "$version" >&2
+            exit 1
+          fi
+          printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
 
       - name: Install build tools
         run: |
@@ -21,6 +39,9 @@ jobs:
           rustup target add x86_64-unknown-linux-musl --toolchain stable
 
       - name: Build CLI
+        env:
+          CC_x86_64_unknown_linux_musl: musl-gcc
+          CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
         run: |
           cargo +stable build \
             --release \
@@ -32,14 +53,14 @@ jobs:
         run: |
           target/x86_64-unknown-linux-musl/release/datanium --help
           target/x86_64-unknown-linux-musl/release/datanium --version
+          target/x86_64-unknown-linux-musl/release/datanium connect --help
 
       - name: Build Debian package
         shell: bash
+        env:
+          PACKAGE_VERSION: ${{ steps.version.outputs.version }}
         run: |
           set -euo pipefail
-
-          version=$(python3 -c \
-            'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["workspace"]["package"]["version"])')
 
           package_dir="target/debian/datanium"
           mkdir -p "$package_dir/DEBIAN" "$package_dir/usr/bin" dist
@@ -50,7 +71,7 @@ jobs:
 
           cat > "$package_dir/DEBIAN/control" <<EOF
           Package: datanium
-          Version: ${version}
+          Version: ${PACKAGE_VERSION}
           Section: database
           Priority: optional
           Architecture: amd64
@@ -61,11 +82,32 @@ jobs:
 
           dpkg-deb --root-owner-group --build \
             "$package_dir" \
-            "dist/datanium_${version}_amd64.deb"
+            dist/datanium-linux-amd64.deb
 
       - name: Upload package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: datanium-linux-amd64
-          path: dist/*.deb
+          path: dist/datanium-linux-amd64.deb
           if-no-files-found: error
+
+  release:
+    needs: package
+    if: github.event_name == 'push' && github.ref_type == 'tag'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download package
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: datanium-linux-amd64
+          path: dist
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/datanium-linux-amd64.deb \
+            --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes --latest

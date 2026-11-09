@@ -9,3 +9,6 @@ repository.workspace = true
 datanium-core = { path = "../datanium-core" }
 datanium-storage = { path = "../datanium-storage" }
 datanium-query = { path = "../datanium-query" }
+axum = "0.8.9"
+tokio = { version = "1.54.1", features = ["macros", "rt-multi-thread", "net", "sync"] }
+datanium-protocol = { version = "0.1.0", path = "../datanium-protocol" }

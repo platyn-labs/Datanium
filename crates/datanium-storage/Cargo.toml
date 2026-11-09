@@ -7,3 +7,4 @@ repository.workspace = true
 
 [dependencies]
 datanium-core = { path = "../datanium-core" }
+tempfile = "3.27.0"
