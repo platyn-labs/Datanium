@@ -1,4 +1,5 @@
 mod commands;
+mod session;
 
 use std::{env, error::Error, process::ExitCode};
 

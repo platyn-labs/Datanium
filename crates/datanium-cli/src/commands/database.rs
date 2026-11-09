@@ -10,6 +10,9 @@ pub enum DatabaseCommand {
 
     /// List available databases.
     List,
+
+    /// Opens a database.
+    Open(OpenArgs),
 }
 
 impl DatabaseCommand {
@@ -27,6 +30,10 @@ impl DatabaseCommand {
                     println!("{}", database.name());
                 }
             }
+            Self::Open(args) => {
+                let database = store.open_database(&args.name)?;
+                crate::session::run(database.name())?;
+            }
         }
         Ok(())
     }
@@ -35,6 +42,13 @@ impl DatabaseCommand {
 #[derive(Args)]
 #[command(after_help = "Example:\n datanium database create example")]
 pub struct CreateArgs {
+    /// Name of the database.
+    pub name: String,
+}
+
+#[derive(Args)]
+#[command(after_help = "Example:\n datanium database open example")]
+pub struct OpenArgs {
     /// Name of the database.
     pub name: String,
 }
