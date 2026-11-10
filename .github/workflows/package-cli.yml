@@ -64,7 +64,7 @@ jobs:
             "dist/datanium_${version}_amd64.deb"
 
       - name: Upload package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: datanium-linux-amd64
           path: dist/*.deb
