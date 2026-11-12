@@ -94,7 +94,7 @@ fn insert_warns_on_type_mismatches_preserves_original_values_and_accepts_null()
             } else {
                 Cell::Warning {
                     value: original,
-                    warning: CellWarning::TypeMismatch { expected, actual },
+                    warnings: vec![CellWarning::TypeMismatch { expected, actual }],
                 }
             };
             assert_eq!(table.get_row(&row)?.get_cell(&column), Some(&wanted));

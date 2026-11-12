@@ -235,11 +235,13 @@ impl Database {
     ///
     /// `NotNull` keeps null values and marks them with [`CellWarning::NotNull`].
     /// Adding the same `NotNull` rule again succeeds without changing the table.
+    /// `Unique` warns on all rows with the same combination of column values.
+    /// Combinations containing nulls or type-mismatched cells are excluded.
     ///
     /// # Errors
     /// Returns [`DatabaseError::TableNotFound`] for an unknown table,
     /// [`DatabaseError::Constraint`] for an invalid definition, or
-    /// [`DatabaseError::UnsupportedConstraint`] for a rule other than `NotNull`.
+    /// [`DatabaseError::UnsupportedConstraint`] for `PrimaryKey` or `ForeignKey`.
     /// On error, the database is unchanged.
     pub fn add_constraint(
         &mut self,
@@ -251,6 +253,9 @@ impl Database {
         match constraint {
             Constraint::NotNull { column } => table
                 .add_not_null_constraint(column)
+                .map_err(DatabaseError::Constraint),
+            Constraint::Unique { columns } => table
+                .add_unique_constraint(columns)
                 .map_err(DatabaseError::Constraint),
             _ => Err(DatabaseError::UnsupportedConstraint),
         }

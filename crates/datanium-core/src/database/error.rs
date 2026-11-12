@@ -56,6 +56,7 @@ pub enum TableError {
     ColumnNotFound,
     DuplicateColumn(ColumnId),
     RowNotFound,
+    EmptyConstraintColumns,
 }
 
 impl fmt::Display for TableError {
@@ -68,6 +69,7 @@ impl fmt::Display for TableError {
             Self::ColumnNotFound => "column not found",
             Self::DuplicateColumn(_) => "a column was supplied more than once",
             Self::RowNotFound => "row not found",
+            Self::EmptyConstraintColumns => "constraint must contain at least one column",
         })
     }
 }

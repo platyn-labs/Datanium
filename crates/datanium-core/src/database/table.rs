@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use super::error::TableError;
 use super::name;
@@ -219,6 +219,8 @@ impl Table {
         self.rows.insert(id, row);
         self.next_row_id = next_row_id;
 
+        self.revalidate_unique_constraints();
+
         Ok(id)
     }
 
@@ -287,21 +289,25 @@ impl Table {
 
         row.apply_changes(changes);
 
+        self.revalidate_unique_constraints();
+
         Ok(())
     }
 
     /// Removes a row by its table-local ID, including all of its cells.
     ///
-    /// Other rows and the row ID counter are unchanged.
+    /// Unique warnings on remaining rows are revalidated. The row ID counter
+    /// is unchanged.
     ///
     /// # Errors
     /// Returns [`TableError::RowNotFound`] if the ID is absent and leaves the
     /// table unchanged.
     pub fn delete_row(&mut self, id: &RowId) -> Result<(), TableError> {
-        self.rows
-            .remove(id)
-            .map(|_| ())
-            .ok_or(TableError::RowNotFound)
+        self.rows.remove(id).ok_or(TableError::RowNotFound)?;
+
+        self.revalidate_unique_constraints();
+
+        Ok(())
     }
 
     pub(super) fn add_not_null_constraint(&mut self, column: ColumnId) -> Result<(), TableError> {
@@ -322,6 +328,30 @@ impl Table {
         Ok(())
     }
 
+    pub(super) fn add_unique_constraint(
+        &mut self,
+        columns: Vec<ColumnId>,
+    ) -> Result<(), TableError> {
+        if columns.is_empty() {
+            return Err(TableError::EmptyConstraintColumns);
+        }
+
+        let mut seen = BTreeSet::new();
+
+        for column in &columns {
+            self.get_column(column)?;
+
+            if !seen.insert(*column) {
+                return Err(TableError::DuplicateColumn(*column));
+            }
+        }
+
+        self.revalidate_unique(&columns);
+        self.constraints.push(Constraint::Unique { columns });
+
+        Ok(())
+    }
+
     fn cell_for_value(&self, column: &Column, value: Value) -> Cell {
         if matches!(value, Value::Null) && self.requires_non_null(column.id()) {
             return Cell::not_null_warning();
@@ -334,6 +364,61 @@ impl Table {
         self.constraints
             .iter()
             .any(|constraint| matches!(constraint, Constraint::NotNull { column } if column == id))
+    }
+
+    fn revalidate_unique(&mut self, columns: &[ColumnId]) {
+        let duplicates = {
+            let candidates: Vec<_> = self
+                .rows
+                .iter()
+                .filter_map(|(&id, row)| {
+                    let values = columns
+                        .iter()
+                        .map(|column| row.get_cell(column)?.unique_value())
+                        .collect::<Option<Vec<_>>>()?;
+
+                    Some((id, values))
+                })
+                .collect();
+
+            let mut duplicates = BTreeSet::new();
+
+            for (index, (id, values)) in candidates.iter().enumerate() {
+                for (other_id, other_values) in &candidates[index + 1..] {
+                    if values == other_values {
+                        duplicates.insert(*id);
+                        duplicates.insert(*other_id);
+                    }
+                }
+            }
+
+            duplicates
+        };
+
+        for (id, row) in &mut self.rows {
+            let violated = duplicates.contains(id);
+
+            for column in columns {
+                if let Some(cell) = row.get_cell_mut(column) {
+                    cell.set_unique_warning(columns, violated);
+                }
+            }
+        }
+    }
+
+    fn revalidate_unique_constraints(&mut self) {
+        let rules: Vec<Vec<ColumnId>> = self
+            .constraints
+            .iter()
+            .filter_map(|constraint| match constraint {
+                Constraint::Unique { columns } => Some(columns.clone()),
+                _ => None,
+            })
+            .collect();
+
+        for columns in rules {
+            self.revalidate_unique(&columns);
+        }
     }
 
     fn column_name_exists(&self, name: &str) -> bool {

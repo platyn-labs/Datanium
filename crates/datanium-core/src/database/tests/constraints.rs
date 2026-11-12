@@ -20,7 +20,7 @@ fn adding_not_null_warns_on_existing_null_cells() -> Result<(), Box<dyn std::err
         row.get_cell(&count),
         Some(&Cell::Warning {
             value: Value::Null,
-            warning: CellWarning::NotNull,
+            warnings: vec![CellWarning::NotNull],
         })
     );
     assert_eq!(row.get_cell(&note), Some(&Cell::Valid(Value::Null)));
@@ -50,7 +50,7 @@ fn not_null_insert_warns_for_explicit_and_omitted_nulls() -> Result<(), Box<dyn 
             table.get_row(&id)?.get_cell(&count),
             Some(&Cell::Warning {
                 value: Value::Null,
-                warning: CellWarning::NotNull,
+                warnings: vec![CellWarning::NotNull],
             })
         );
     }
@@ -69,7 +69,7 @@ fn not_null_update_revalidates_the_changed_cell() -> Result<(), Box<dyn std::err
     let row = table.add_row([(count, Value::Int(7))])?;
     let warning = Cell::Warning {
         value: Value::Null,
-        warning: CellWarning::NotNull,
+        warnings: vec![CellWarning::NotNull],
     };
 
     table.update_row(&row, [(count, Value::Null)])?;

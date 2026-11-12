@@ -58,6 +58,7 @@ fn table_errors_expose_standard_error_messages() {
         TableError::ColumnAlreadyExists,
         TableError::InvalidColumnName,
         TableError::ColumnNotFound,
+        TableError::EmptyConstraintColumns,
     ] {
         let standard: &dyn std::error::Error = &error;
         assert!(!standard.to_string().is_empty());

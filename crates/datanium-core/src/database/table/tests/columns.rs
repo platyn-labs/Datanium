@@ -77,10 +77,10 @@ fn rename_column_preserves_id_type_and_cells_and_updates_name_lookup() -> Result
         table.get_row(&warned)?.get_cell(&id),
         Some(&Cell::Warning {
             value: Value::Int(42),
-            warning: crate::database::CellWarning::TypeMismatch {
+            warnings: vec![crate::database::CellWarning::TypeMismatch {
                 expected: DataType::Text,
                 actual: DataType::Int,
-            },
+            }],
         })
     );
 

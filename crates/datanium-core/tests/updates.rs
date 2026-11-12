@@ -54,10 +54,10 @@ fn update_preserves_a_type_warning_until_the_value_is_corrected()
     let row = table.add_row([(count, Value::Int(1))])?;
     let warning = Cell::Warning {
         value: Value::Text("12 Stück".into()),
-        warning: CellWarning::TypeMismatch {
+        warnings: vec![CellWarning::TypeMismatch {
             expected: DataType::Int,
             actual: DataType::Text,
-        },
+        }],
     };
 
     table.update_row(&row, [(count, Value::Text("12 Stück".into()))])?;
