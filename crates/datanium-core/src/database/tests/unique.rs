@@ -1,4 +1,7 @@
-//! Single-column Unique constraint behavior and definition validation.
+//! Unique constraint behavior and definition validation.
+
+mod column_deletion;
+mod composite;
 
 use crate::database::{
     Cell, CellWarning, ColumnId, Constraint, DataType, Database, DatabaseError, RowId, Table,
@@ -18,6 +21,34 @@ fn setup() -> Result<(Database, TableId, ColumnId), Box<dyn std::error::Error>> 
 
 fn unique(key: ColumnId) -> Constraint {
     Constraint::Unique { columns: vec![key] }
+}
+
+fn setup_pair() -> Result<(Database, TableId, [ColumnId; 2]), Box<dyn std::error::Error>> {
+    let (mut database, table_id, code) = setup()?;
+    let label = database
+        .get_table_mut(&table_id)?
+        .create_column("Label", DataType::Text)?;
+    Ok((database, table_id, [code, label]))
+}
+
+fn pair_rule(columns: [ColumnId; 2]) -> Constraint {
+    Constraint::Unique {
+        columns: columns.to_vec(),
+    }
+}
+
+fn assert_pair(
+    table: &Table,
+    rows: &[RowId],
+    columns: [ColumnId; 2],
+    code: i64,
+    label: &str,
+    warnings: &[CellWarning],
+) {
+    for &row in rows {
+        assert_cell(table, row, columns[0], Value::Int(code), warnings);
+        assert_cell(table, row, columns[1], Value::Text(label.into()), warnings);
+    }
 }
 
 // Warning order is not part of the contract. Each warning must occur once.

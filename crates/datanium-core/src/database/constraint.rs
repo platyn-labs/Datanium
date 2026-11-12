@@ -3,9 +3,13 @@ use super::table::TableId;
 
 /// A rule that can be defined for a table.
 pub enum Constraint {
+    /// Warns on null values in the selected column.
     NotNull {
         column: ColumnId,
     },
+    /// Warns on every row sharing the same combination of column values.
+    /// All key cells are marked. Keys containing nulls or type mismatches are
+    /// excluded, and the column list must be nonempty with distinct, known IDs.
     Unique {
         columns: Vec<ColumnId>,
     },

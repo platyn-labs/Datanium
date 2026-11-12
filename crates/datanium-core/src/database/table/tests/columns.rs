@@ -288,3 +288,68 @@ fn delete_column_keeps_rows_and_frees_the_name_when_deleting_the_last_column()
     assert_eq!(retained.get_cell(&created), Some(&Cell::Valid(Value::Null)));
     Ok(())
 }
+
+#[test]
+fn delete_column_removes_all_referencing_unique_rules_and_preserves_unrelated_definitions()
+-> Result<(), TableError> {
+    let mut table = Table::new(TableId::new(1), "Items");
+    let deleted = table.create_column("Deleted", DataType::Int)?;
+    let retained = table.create_column("Retained", DataType::Int)?;
+    let other = table.create_column("Other", DataType::Int)?;
+    table.add_not_null_constraint(deleted)?;
+    table.add_not_null_constraint(retained)?;
+    for columns in [
+        vec![deleted],
+        vec![deleted, retained],
+        vec![other, deleted],
+        vec![retained],
+        vec![retained, other],
+    ] {
+        table.add_unique_constraint(columns)?;
+    }
+
+    table.delete_column(&deleted)?;
+
+    // Cell values alone cannot reveal a silently retained, inactive definition.
+    assert_eq!(table.constraints.len(), 3);
+    assert!(table.constraints.iter().any(|constraint| {
+        matches!(constraint, Constraint::NotNull { column } if *column == retained)
+    }));
+    for expected in [vec![retained], vec![retained, other]] {
+        assert!(table.constraints.iter().any(|constraint| {
+            matches!(constraint, Constraint::Unique { columns } if columns == &expected)
+        }));
+    }
+    Ok(())
+}
+
+#[test]
+fn deleting_the_last_unique_column_removes_its_rule_and_does_not_apply_it_to_a_recreated_column()
+-> Result<(), TableError> {
+    let mut table = Table::new(TableId::new(1), "Items");
+    let deleted = table.create_column("Code", DataType::Int)?;
+    table.add_unique_constraint(vec![deleted])?;
+    let a = table.add_row([(deleted, Value::Int(7))])?;
+    let b = table.add_row([(deleted, Value::Int(7))])?;
+
+    table.delete_column(&deleted)?;
+
+    assert!(table.constraints.is_empty());
+    assert_eq!(table.rows().count(), 2);
+    for row in [a, b] {
+        assert_eq!(table.get_row(&row)?.get_cell(&deleted), None);
+    }
+
+    let recreated = table.create_column("Code", DataType::Int)?;
+    assert!(recreated > deleted);
+    for row in [a, b] {
+        table.update_row(&row, [(recreated, Value::Int(7))])?;
+    }
+    for row in [a, b] {
+        assert_eq!(
+            table.get_row(&row)?.get_cell(&recreated),
+            Some(&Cell::Valid(Value::Int(7)))
+        );
+    }
+    Ok(())
+}

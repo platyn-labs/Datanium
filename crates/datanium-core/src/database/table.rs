@@ -152,23 +152,47 @@ impl Table {
         Ok(())
     }
 
-    /// Removes a column by its table-local ID, its cells, and its `NotNull` rule.
+    /// Removes a column by its table-local ID, its cells, and referencing rules.
     ///
-    /// Other columns and cells are preserved. Deleting the last column leaves
-    /// the rows in place with no cells. The name becomes available again, and
-    /// the column ID counter is unchanged.
+    /// Referencing `NotNull` and `Unique` rules are removed entirely, including
+    /// composite unique rules. Warnings belonging to removed unique rules are
+    /// cleared from remaining cells; other values and warnings are preserved.
+    /// Cells with no remaining warnings become valid.
+    ///
+    /// Deleting the last column leaves the rows in place with no cells. The name
+    /// becomes available again, and the column ID counter is unchanged.
     ///
     /// # Errors
     /// Returns [`TableError::ColumnNotFound`] if the ID is absent and leaves the
     /// table unchanged.
     pub fn delete_column(&mut self, id: &ColumnId) -> Result<(), TableError> {
         self.columns.remove(id).ok_or(TableError::ColumnNotFound)?;
-        self.constraints.retain(
-            |constraint| !matches!(constraint, Constraint::NotNull { column } if column == id),
-        );
+
+        let removed_unique: Vec<Vec<ColumnId>> = self
+            .constraints
+            .iter()
+            .filter_map(|constraint| match constraint {
+                Constraint::Unique { columns } if columns.contains(id) => Some(columns.clone()),
+                _ => None,
+            })
+            .collect();
+
+        self.constraints.retain(|constraint| match constraint {
+            Constraint::NotNull { column } => column != id,
+            Constraint::Unique { columns } => !columns.contains(id),
+            _ => true,
+        });
 
         for row in self.rows.values_mut() {
             row.remove_cell(id);
+
+            for columns in &removed_unique {
+                for column in columns {
+                    if let Some(cell) = row.get_cell_mut(column) {
+                        cell.set_unique_warning(columns, false);
+                    }
+                }
+            }
         }
 
         Ok(())
@@ -179,6 +203,8 @@ impl Table {
     /// Omitted columns receive null cells, just like explicit null inputs.
     /// Nulls in `NotNull` columns and type mismatches are stored with a warning
     /// that preserves the original value. No implicit conversions are performed.
+    /// Unique rules revalidate all affected duplicate groups, including existing
+    /// rows. Keys containing nulls or type-mismatched cells are excluded.
     /// Empty input creates an all-null row, or an empty row in a columnless table.
     ///
     /// # Errors
@@ -260,6 +286,7 @@ impl Table {
     /// Updates supplied cells while preserving omitted cells and the row ID.
     ///
     /// Updated cells follow the same validation rules as [`Self::add_row`].
+    /// Unique warnings are refreshed on both the old and new duplicate groups.
     /// Empty input succeeds for an existing row. Failed operations leave all
     /// rows and ID counters unchanged.
     ///

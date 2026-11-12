@@ -14,6 +14,7 @@ pub enum CellError {
 #[derive(Debug, PartialEq, Eq)]
 /// A stored value and its validation status.
 /// A type mismatch retains the original value with a [`CellWarning::TypeMismatch`].
+/// A warning cell can hold issues from multiple rules at the same time.
 pub enum Cell {
     Valid(Value),
     Warning {
@@ -34,6 +35,7 @@ pub enum CellWarning {
         actual: DataType,
     },
     NotNull,
+    /// Identifies the unique rule violated by this cell's row.
     Unique {
         columns: Vec<ColumnId>,
     },
@@ -58,6 +60,8 @@ impl Cell {
         }
     }
 
+    /// Borrows a value eligible for unique comparisons, including values with
+    /// existing unique warnings. Nulls, type mismatches and error cells are excluded.
     pub(super) fn unique_value(&self) -> Option<&Value> {
         let value = match self {
             Self::Valid(value) => value,
@@ -78,6 +82,9 @@ impl Cell {
         }
     }
 
+    /// Sets or clears the warning for this exact unique rule, preserving other
+    /// warnings and the value. A cell with no remaining warnings becomes valid.
+    /// Error cells are unchanged. Warning order is not preserved.
     pub(super) fn set_unique_warning(&mut self, columns: &[ColumnId], violated: bool) {
         if let Self::Warning { warnings, .. } = self {
             warnings.retain(|warning| {
