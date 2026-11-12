@@ -237,11 +237,14 @@ impl Database {
     /// Adding the same `NotNull` rule again succeeds without changing the table.
     /// `Unique` warns on all rows with the same combination of column values.
     /// Combinations containing nulls or type-mismatched cells are excluded.
+    /// `PrimaryKey` combines not-null and uniqueness checks using the same warnings.
+    /// Each table can have one primary key; adding that exact definition again
+    /// succeeds without changing the table.
     ///
     /// # Errors
     /// Returns [`DatabaseError::TableNotFound`] for an unknown table,
     /// [`DatabaseError::Constraint`] for an invalid definition, or
-    /// [`DatabaseError::UnsupportedConstraint`] for `PrimaryKey` or `ForeignKey`.
+    /// [`DatabaseError::UnsupportedConstraint`] for `ForeignKey`.
     /// On error, the database is unchanged.
     pub fn add_constraint(
         &mut self,
@@ -251,6 +254,9 @@ impl Database {
         let table = self.get_table_mut(table_id)?;
 
         match constraint {
+            Constraint::PrimaryKey { columns } => table
+                .add_primary_key_constraint(columns)
+                .map_err(DatabaseError::Constraint),
             Constraint::NotNull { column } => table
                 .add_not_null_constraint(column)
                 .map_err(DatabaseError::Constraint),

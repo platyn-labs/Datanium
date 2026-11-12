@@ -35,7 +35,8 @@ pub enum CellWarning {
         actual: DataType,
     },
     NotNull,
-    /// Identifies the unique rule violated by this cell's row.
+    /// Identifies the columns whose uniqueness is violated by this cell's row,
+    /// whether required by a `Unique` or `PrimaryKey` rule.
     Unique {
         columns: Vec<ColumnId>,
     },
@@ -57,6 +58,19 @@ impl Cell {
         Self::Warning {
             value: Value::Null,
             warnings: vec![CellWarning::NotNull],
+        }
+    }
+
+    /// Clears the not-null warning while preserving the value and other warnings.
+    /// A cell with no remaining warnings becomes valid. Error cells are unchanged.
+    pub(super) fn clear_not_null_warning(&mut self) {
+        if let Self::Warning { value, warnings } = self {
+            warnings.retain(|warning| !matches!(warning, CellWarning::NotNull));
+
+            if warnings.is_empty() {
+                let value = std::mem::replace(value, Value::Null);
+                *self = Self::Valid(value);
+            }
         }
     }
 

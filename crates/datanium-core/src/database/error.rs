@@ -57,6 +57,8 @@ pub enum TableError {
     DuplicateColumn(ColumnId),
     RowNotFound,
     EmptyConstraintColumns,
+    /// This table already has a primary key with a different column list.
+    PrimaryKeyAlreadyExists,
 }
 
 impl fmt::Display for TableError {
@@ -70,6 +72,7 @@ impl fmt::Display for TableError {
             Self::DuplicateColumn(_) => "a column was supplied more than once",
             Self::RowNotFound => "row not found",
             Self::EmptyConstraintColumns => "constraint must contain at least one column",
+            Self::PrimaryKeyAlreadyExists => "a different primary key already exists",
         })
     }
 }

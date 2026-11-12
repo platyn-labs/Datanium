@@ -154,9 +154,10 @@ impl Table {
 
     /// Removes a column by its table-local ID, its cells, and referencing rules.
     ///
-    /// Referencing `NotNull` and `Unique` rules are removed entirely, including
-    /// composite unique rules. Warnings belonging to removed unique rules are
-    /// cleared from remaining cells; other values and warnings are preserved.
+    /// Referencing `NotNull`, `Unique` and `PrimaryKey` rules are removed entirely,
+    /// including composite keys. Their uniqueness warnings are cleared from
+    /// remaining cells. Not-null warnings are cleared only if no surviving rule
+    /// requires that column to be non-null. Other values and warnings are preserved.
     /// Cells with no remaining warnings become valid.
     ///
     /// Deleting the last column leaves the rows in place with no cells. The name
@@ -168,29 +169,48 @@ impl Table {
     pub fn delete_column(&mut self, id: &ColumnId) -> Result<(), TableError> {
         self.columns.remove(id).ok_or(TableError::ColumnNotFound)?;
 
-        let removed_unique: Vec<Vec<ColumnId>> = self
+        let removed_keys: Vec<Vec<ColumnId>> = self
             .constraints
             .iter()
             .filter_map(|constraint| match constraint {
-                Constraint::Unique { columns } if columns.contains(id) => Some(columns.clone()),
+                Constraint::Unique { columns } | Constraint::PrimaryKey { columns }
+                    if columns.contains(id) =>
+                {
+                    Some(columns.clone())
+                }
                 _ => None,
             })
             .collect();
 
         self.constraints.retain(|constraint| match constraint {
             Constraint::NotNull { column } => column != id,
-            Constraint::Unique { columns } => !columns.contains(id),
+            Constraint::Unique { columns } | Constraint::PrimaryKey { columns } => {
+                !columns.contains(id)
+            }
             _ => true,
         });
+
+        let nullable_columns: BTreeSet<_> = removed_keys
+            .iter()
+            .flatten()
+            .copied()
+            .filter(|column| !self.requires_non_null(column))
+            .collect();
 
         for row in self.rows.values_mut() {
             row.remove_cell(id);
 
-            for columns in &removed_unique {
+            for columns in &removed_keys {
                 for column in columns {
                     if let Some(cell) = row.get_cell_mut(column) {
                         cell.set_unique_warning(columns, false);
                     }
+                }
+            }
+
+            for column in &nullable_columns {
+                if let Some(cell) = row.get_cell_mut(column) {
+                    cell.clear_not_null_warning();
                 }
             }
         }
@@ -201,10 +221,11 @@ impl Table {
     /// Inserts values by column ID and returns a new table-local row ID.
     ///
     /// Omitted columns receive null cells, just like explicit null inputs.
-    /// Nulls in `NotNull` columns and type mismatches are stored with a warning
-    /// that preserves the original value. No implicit conversions are performed.
-    /// Unique rules revalidate all affected duplicate groups, including existing
-    /// rows. Keys containing nulls or type-mismatched cells are excluded.
+    /// Nulls in `NotNull` or `PrimaryKey` columns and type mismatches are stored
+    /// with a warning that preserves the original value. No implicit conversions
+    /// are performed. `Unique` and `PrimaryKey` rules revalidate all affected
+    /// duplicate groups, including existing rows. Keys containing nulls or
+    /// type-mismatched cells are excluded from uniqueness comparisons.
     /// Empty input creates an all-null row, or an empty row in a columnless table.
     ///
     /// # Errors
@@ -337,10 +358,60 @@ impl Table {
         Ok(())
     }
 
+    pub(super) fn add_primary_key_constraint(
+        &mut self,
+        columns: Vec<ColumnId>,
+    ) -> Result<(), TableError> {
+        if columns.is_empty() {
+            return Err(TableError::EmptyConstraintColumns);
+        }
+
+        let mut seen = BTreeSet::new();
+
+        for column in &columns {
+            self.get_column(column)?;
+
+            if !seen.insert(*column) {
+                return Err(TableError::DuplicateColumn(*column));
+            }
+        }
+
+        let existing = self
+            .constraints
+            .iter()
+            .find_map(|constraint| match constraint {
+                Constraint::PrimaryKey { columns } => Some(columns),
+                _ => None,
+            });
+
+        if let Some(existing) = existing {
+            return if existing == &columns {
+                Ok(())
+            } else {
+                Err(TableError::PrimaryKeyAlreadyExists)
+            };
+        }
+
+        for row in self.rows.values_mut() {
+            for column in &columns {
+                if let Some(cell @ Cell::Valid(Value::Null)) = row.get_cell_mut(column) {
+                    *cell = Cell::not_null_warning();
+                }
+            }
+        }
+
+        self.revalidate_unique(&columns);
+        self.constraints.push(Constraint::PrimaryKey { columns });
+
+        Ok(())
+    }
+
     pub(super) fn add_not_null_constraint(&mut self, column: ColumnId) -> Result<(), TableError> {
         self.get_column(&column)?;
 
-        if self.requires_non_null(&column) {
+        if self.constraints.iter().any(|constraint| {
+            matches!(constraint, Constraint::NotNull { column: existing } if *existing == column)
+        }) {
             return Ok(());
         }
 
@@ -388,9 +459,11 @@ impl Table {
     }
 
     fn requires_non_null(&self, id: &ColumnId) -> bool {
-        self.constraints
-            .iter()
-            .any(|constraint| matches!(constraint, Constraint::NotNull { column } if column == id))
+        self.constraints.iter().any(|constraint| match constraint {
+            Constraint::NotNull { column } => column == id,
+            Constraint::PrimaryKey { columns } => columns.contains(id),
+            _ => false,
+        })
     }
 
     fn revalidate_unique(&mut self, columns: &[ColumnId]) {
@@ -438,7 +511,9 @@ impl Table {
             .constraints
             .iter()
             .filter_map(|constraint| match constraint {
-                Constraint::Unique { columns } => Some(columns.clone()),
+                Constraint::Unique { columns } | Constraint::PrimaryKey { columns } => {
+                    Some(columns.clone())
+                }
                 _ => None,
             })
             .collect();
